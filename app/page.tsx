@@ -27,16 +27,33 @@ interface ProcessVoiceResponse {
   message: string;
 }
 
+interface UpdateInventoryResponse {
+  success: boolean;
+  changes: {
+    type: string;
+    name: string;
+    desc: string;
+    expire_date: string;
+  }[];
+  message: string;
+}
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("准备就绪");
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // Changed apiResponse to store the full object or null
   const [apiResponse, setApiResponse] = useState<ProcessVoiceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   
+  // Auto-Update States
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [isCancelled, setIsCancelled] = useState(false);
+  const [updateResponse, setUpdateResponse] = useState<UpdateInventoryResponse | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
   // Inventory State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loadingInventory, setLoadingInventory] = useState(false);
@@ -44,9 +61,9 @@ export default function Home() {
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptRef = useRef(""); 
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Initial fetch of inventory
     fetchInventory();
 
     if (typeof window !== "undefined") {
@@ -68,7 +85,7 @@ export default function Home() {
         setIsRecording(true);
         setStatus("正在录音... (30秒后自动结束)");
         setError(null);
-        setApiResponse(null); // Clear previous response
+        resetFlowState();
         transcriptRef.current = ""; 
         setTranscript("");
 
@@ -120,8 +137,18 @@ export default function Home() {
     return () => {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         if (recognitionRef.current) recognitionRef.current.stop();
+        if (countdownRef.current) clearInterval(countdownRef.current);
     }
   }, []);
+
+  const resetFlowState = () => {
+      setApiResponse(null);
+      setUpdateResponse(null);
+      setIsCancelled(false);
+      setEditMode(false);
+      setCountdown(null);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+  };
 
   const fetchInventory = async () => {
     setLoadingInventory(true);
@@ -132,7 +159,6 @@ export default function Home() {
       setInventory(data);
     } catch (e) {
       console.error("Failed to fetch inventory", e);
-      // Optional: don't block main UI with inventory error, just log it or show small badge
     } finally {
       setLoadingInventory(false);
     }
@@ -140,7 +166,7 @@ export default function Home() {
 
   const startRecording = () => {
     setTranscript("");
-    setApiResponse(null);
+    resetFlowState();
     setError(null);
     try {
         recognitionRef.current?.start();
@@ -160,6 +186,11 @@ export default function Home() {
   const processText = async (text: string) => {
       setStatus("正在解析...");
       setIsProcessing(true);
+      // Reset previous update state but keep transcript for editing
+      setUpdateResponse(null); 
+      setIsCancelled(false);
+      setCountdown(null);
+
       try {
           const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/processVoiceInput", {
             method: "POST",
@@ -172,12 +203,70 @@ export default function Home() {
           const data: ProcessVoiceResponse = await res.json();
           setApiResponse(data);
           setStatus("解析完成");
+
+          if (data.success) {
+              startAutoUpdateTimer(data);
+          }
       } catch (e) {
           setStatus("解析失败");
           setError("无法连接到解析服务");
           console.error(e);
       } finally {
           setIsProcessing(false);
+          setEditMode(false); // Exit edit mode if we were in it
+      }
+  };
+
+  const startAutoUpdateTimer = (data: ProcessVoiceResponse) => {
+      setCountdown(5);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      
+      let timeLeft = 5;
+      countdownRef.current = setInterval(() => {
+          timeLeft -= 1;
+          setCountdown(timeLeft);
+          
+          if (timeLeft <= 0) {
+              if (countdownRef.current) clearInterval(countdownRef.current);
+              setCountdown(null);
+              // Trigger update
+              updateInventory(data.data.items);
+          }
+      }, 1000);
+  };
+
+  const cancelAutoUpdate = () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      setCountdown(null);
+      setIsCancelled(true);
+      setEditMode(true);
+      setStatus("已取消自动更新，请编辑");
+  };
+
+  const updateInventory = async (items: any[]) => {
+      setStatus("正在更新库存...");
+      setIsUpdating(true);
+      try {
+          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/updateInventory", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items }),
+          });
+          
+          if (!res.ok) throw new Error("Update failed");
+          
+          const data: UpdateInventoryResponse = await res.json();
+          setUpdateResponse(data);
+          setStatus("库存更新完成");
+          
+          // Refresh inventory list
+          fetchInventory();
+      } catch (e) {
+          setStatus("更新失败");
+          setError("无法更新库存");
+          console.error(e);
+      } finally {
+          setIsUpdating(false);
       }
   };
 
@@ -197,35 +286,87 @@ export default function Home() {
         {/* Status Display */}
         <div className={`text-center py-2 px-4 rounded-full text-xs font-medium transition-colors ${
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
-            isProcessing ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
         }`}>
             {status}
         </div>
 
-        {/* Transcript Area */}
+        {/* Transcript / Edit Area */}
         <div className="flex-none border border-gray-200 rounded-xl p-4 bg-white min-h-[120px] max-h-[200px] overflow-y-auto shadow-sm">
-            {transcript ? (
+            {editMode ? (
+                <div className="flex flex-col gap-2 h-full">
+                    <textarea 
+                        value={transcript}
+                        onChange={(e) => setTranscript(e.target.value)}
+                        className="w-full h-full p-2 border border-blue-200 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
+                    />
+                    <button 
+                        onClick={() => processText(transcript)}
+                        className="self-end bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+                    >
+                        重新解析
+                    </button>
+                </div>
+            ) : transcript ? (
                 <p className="text-base text-gray-800 whitespace-pre-wrap">{transcript}</p>
             ) : (
                 <p className="text-gray-400 italic text-sm text-center mt-8">点击麦克风开始说话...</p>
             )}
         </div>
         
-        {/* API Response Area */}
-        {apiResponse && (
+        {/* API Response & Countdown Area */}
+        {apiResponse && !updateResponse && (
             <div className={`border rounded-lg p-3 animate-in fade-in slide-in-from-bottom-2 ${apiResponse.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center gap-2 mb-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${apiResponse.success ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
-                        {apiResponse.success ? 'SUCCESS' : 'ERROR'}
-                    </span>
-                    <h3 className={`text-xs font-bold uppercase tracking-wider ${apiResponse.success ? 'text-green-700' : 'text-red-700'}`}>
-                        AI 解析结果
-                    </h3>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${apiResponse.success ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
+                            {apiResponse.success ? 'Parsed' : 'Error'}
+                        </span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-green-700">
+                            解析结果
+                        </h3>
+                    </div>
                 </div>
-                <p className={`${apiResponse.success ? 'text-green-800' : 'text-red-800'} text-sm leading-relaxed`}>
+                <p className="text-green-800 text-sm leading-relaxed mb-3">
                     {apiResponse.message}
                 </p>
+                
+                {/* Countdown & Cancel */}
+                {countdown !== null && (
+                    <div className="flex items-center justify-between bg-white/60 p-2 rounded border border-green-100">
+                        <span className="text-xs text-green-800 font-medium animate-pulse">
+                            自动更新: {countdown}s...
+                        </span>
+                        <button 
+                            onClick={cancelAutoUpdate}
+                            className="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition-colors"
+                        >
+                            取消并编辑
+                        </button>
+                    </div>
+                )}
             </div>
+        )}
+
+        {/* Update Response Area */}
+        {updateResponse && (
+             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex items-center gap-2 mb-2">
+                    <span className="bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Updated</span>
+                    <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider">库存更新</h3>
+                </div>
+                <p className="text-blue-900 text-sm">{updateResponse.message}</p>
+                {updateResponse.changes.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                        {updateResponse.changes.map((change, idx) => (
+                            <li key={idx} className="text-xs text-blue-700 bg-white/50 p-1.5 rounded flex justify-between">
+                                <span>{change.name}</span>
+                                <span className="font-medium">{change.desc}</span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+             </div>
         )}
 
         {/* Error Display */}
@@ -240,7 +381,7 @@ export default function Home() {
             {!isRecording ? (
                 <button 
                     onClick={startRecording}
-                    disabled={isProcessing}
+                    disabled={isProcessing || isUpdating || (countdown !== null)}
                     className="flex items-center gap-2 bg-black text-white px-8 py-4 rounded-full hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg text-lg font-medium"
                 >
                     <Mic className="w-6 h-6" />
