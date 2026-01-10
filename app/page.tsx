@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -47,6 +47,16 @@ interface UpdateInventoryResponse {
   message: string;
 }
 
+interface MealPlanResponse {
+  success: boolean;
+  suggestions: {
+    title: string;
+    rationale: string;
+    description: string;
+  }[];
+  summary: string;
+}
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -62,9 +72,6 @@ export default function Home() {
   const [updateResponse, setUpdateResponse] = useState<UpdateInventoryResponse | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   
-  // No longer needed separate editMode state for transcript as it's always editable
-  // const [editMode, setEditMode] = useState(false);
-
   // Search Results State
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -76,9 +83,14 @@ export default function Home() {
   const [loadingInventory, setLoadingInventory] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // New State for Edit Modal
+  // Edit Modal State
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Meal Plan State
+  const [mealPlan, setMealPlan] = useState<MealPlanResponse | null>(null);
+  const [isFetchingMealPlan, setIsFetchingMealPlan] = useState(false);
+  const [showMealModal, setShowMealModal] = useState(false);
 
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -186,6 +198,23 @@ export default function Home() {
     } finally {
       setLoadingInventory(false);
     }
+  };
+
+  const fetchMealPlan = async () => {
+      setIsFetchingMealPlan(true);
+      setShowMealModal(true); // Open modal immediately to show loading state
+      try {
+          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/recommendMealPlan");
+          if (!res.ok) throw new Error("Failed to fetch meal plan");
+          const data: MealPlanResponse = await res.json();
+          setMealPlan(data);
+      } catch (e) {
+          console.error("Meal plan error", e);
+          alert("无法获取饮食推荐，请稍后再试");
+          setShowMealModal(false); // Close if error
+      } finally {
+          setIsFetchingMealPlan(false);
+      }
   };
 
   const deleteItem = async (id: string, name: string, e: React.MouseEvent) => {
@@ -416,16 +445,26 @@ export default function Home() {
 
   return (
     <div className="flex flex-col items-center min-h-screen p-4 pb-20 gap-6 font-[family-name:var(--font-geist-sans)] max-w-lg mx-auto bg-gray-50">
-      <header className="w-full text-center space-y-2 mt-4">
-        <h1 className="text-2xl font-bold text-gray-900">🎙 家庭库存助手</h1>
-        <p className="text-xs text-gray-500">语音录入 & 库存管理</p>
+      <header className="w-full flex items-center justify-between mt-4">
+        <div className="w-10"></div> {/* Spacer for centering */}
+        <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900">🎙 家庭库存助手</h1>
+            <p className="text-xs text-gray-500">语音录入 & 库存管理</p>
+        </div>
+        <button 
+            onClick={fetchMealPlan}
+            className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors shadow-sm"
+            title="饮食推荐"
+        >
+            <ChefHat className="w-6 h-6" />
+        </button>
       </header>
 
       <main className="flex-1 flex flex-col w-full gap-4">
         {/* Status Display */}
         <div className={`text-center py-2 px-4 rounded-full text-xs font-medium transition-colors ${
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
-            isProcessing || isUpdating || isSearching || isSavingEdit ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
         }`}>
             {status}
         </div>
@@ -626,7 +665,7 @@ export default function Home() {
 
       </main>
 
-      {/* Edit Modal */}
+      {/* Edit Modal (same as before) */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10">
@@ -722,6 +761,65 @@ export default function Home() {
                                 <Check className="w-4 h-4" /> 保存
                             </>
                         )}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Meal Plan Modal */}
+      {showMealModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10 max-h-[90vh] overflow-hidden">
+                <div className="flex justify-between items-center border-b pb-3">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <ChefHat className="w-5 h-5 text-orange-500" /> 
+                        AI 膳食推荐
+                    </h3>
+                    <button onClick={() => setShowMealModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                        <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    {isFetchingMealPlan ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-500 space-y-3">
+                            <RefreshCw className="w-8 h-8 animate-spin text-orange-400" />
+                            <p>正在分析库存为您生成食谱...</p>
+                        </div>
+                    ) : mealPlan ? (
+                        <>
+                            <div className="bg-orange-50 border border-orange-100 p-3 rounded-lg text-orange-800 text-sm font-medium">
+                                {mealPlan.summary}
+                            </div>
+                            
+                            <div className="space-y-3">
+                                {mealPlan.suggestions.map((plan, idx) => (
+                                    <div key={idx} className="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                                        <h4 className="font-bold text-gray-900 mb-1">{plan.title}</h4>
+                                        <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 inline-block px-2 py-0.5 rounded">
+                                            💡 {plan.rationale}
+                                        </p>
+                                        <p className="text-sm text-gray-600 leading-relaxed">
+                                            {plan.description}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-center py-8 text-gray-400">
+                            暂无推荐数据
+                        </div>
+                    )}
+                </div>
+
+                <div className="pt-2 border-t">
+                    <button 
+                        onClick={() => setShowMealModal(false)}
+                        className="w-full py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        关闭
                     </button>
                 </div>
             </div>
