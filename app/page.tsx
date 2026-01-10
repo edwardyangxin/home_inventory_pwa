@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 
-import { Mic, Square, RefreshCw, Package, Trash2 } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2 } from "lucide-react";
 
 
 
@@ -27,6 +27,8 @@ interface InventoryItem {
 }
 
 
+
+// ... other interfaces remain same ...
 
 interface ProcessVoiceResponse {
 
@@ -78,6 +80,8 @@ interface UpdateInventoryResponse {
 
 export default function Home() {
 
+  // ... existing states ...
+
   const [isRecording, setIsRecording] = useState(false);
 
   const [transcript, setTranscript] = useState("");
@@ -94,8 +98,6 @@ export default function Home() {
 
   
 
-  // Auto-Update States
-
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const [isCancelled, setIsCancelled] = useState(false);
@@ -108,13 +110,19 @@ export default function Home() {
 
 
 
-  // Inventory State
-
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
 
   const [loadingInventory, setLoadingInventory] = useState(false);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+
+
+  // New State for Edit Modal
+
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
 
 
@@ -125,6 +133,10 @@ export default function Home() {
   const transcriptRef = useRef(""); 
 
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
+
+
+
+  // ... useEffect and other functions ...
 
 
 
@@ -330,7 +342,9 @@ export default function Home() {
 
 
 
-  const deleteItem = async (id: string, name: string) => {
+  const deleteItem = async (id: string, name: string, e: React.MouseEvent) => {
+
+    e.stopPropagation(); // Prevent opening edit modal
 
     if (!confirm(`确定要删除 "${name}" 吗?`)) return;
 
@@ -356,8 +370,6 @@ export default function Home() {
 
       
 
-      // Optimistic update
-
       setInventory(prev => prev.filter(item => item.id !== id));
 
     } catch (e) {
@@ -371,6 +383,96 @@ export default function Home() {
       setDeletingId(null);
 
     }
+
+  };
+
+
+
+  const openEditModal = (item: InventoryItem) => {
+
+      setEditingItem({ ...item }); // Create a copy
+
+  };
+
+
+
+  const handleEditChange = (field: keyof InventoryItem, value: any) => {
+
+      if (!editingItem) return;
+
+      setEditingItem({ ...editingItem, [field]: value });
+
+  };
+
+
+
+  const saveEdit = async () => {
+
+      if (!editingItem) return;
+
+      setIsSavingEdit(true);
+
+      try {
+
+          const payload = {
+
+            id: editingItem.id,
+
+            name: editingItem.name,
+
+            quantity: Number(editingItem.quantity),
+
+            unit: editingItem.unit,
+
+            category: editingItem.category,
+
+            location: editingItem.location,
+
+            expire_date: editingItem.expireDate // API expects expire_date
+
+          };
+
+
+
+          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/editInventoryItem", {
+
+            method: "POST",
+
+            headers: { "Content-Type": "application/json" },
+
+            body: JSON.stringify(payload),
+
+          });
+
+
+
+          if (!res.ok) throw new Error("Update failed");
+
+
+
+          const responseData = await res.json();
+
+          
+
+          // Update local state
+
+          setInventory(prev => prev.map(item => item.id === editingItem.id ? responseData.item : item));
+
+          setEditingItem(null); // Close modal
+
+          setStatus(`已更新 "${editingItem.name}"`);
+
+      } catch (e) {
+
+          console.error("Failed to update item", e);
+
+          alert("更新失败，请重试");
+
+      } finally {
+
+          setIsSavingEdit(false);
+
+      }
 
   };
 
@@ -419,8 +521,6 @@ export default function Home() {
       setStatus("正在解析...");
 
       setIsProcessing(true);
-
-      // Reset previous update state but keep transcript for editing
 
       setUpdateResponse(null); 
 
@@ -474,7 +574,7 @@ export default function Home() {
 
           setIsProcessing(false);
 
-          setEditMode(false); // Exit edit mode if we were in it
+          setEditMode(false); 
 
       }
 
@@ -592,8 +692,6 @@ export default function Home() {
 
     if (!dateString) return "";
 
-    // If the API returns "YYYY-MM-DD", just return it directly to avoid timezone shifts
-
     if (dateString.includes('T')) {
 
         return dateString.split('T')[0];
@@ -628,7 +726,7 @@ export default function Home() {
 
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
 
-            isProcessing || isUpdating ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating || isSavingEdit ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
 
         }`}>
 
@@ -898,11 +996,25 @@ export default function Home() {
 
               inventory.map((item) => (
 
-                <div key={item.id} className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex justify-between items-center group">
+                <div 
+
+                  key={item.id} 
+
+                  onClick={() => openEditModal(item)}
+
+                  className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex justify-between items-center active:bg-gray-50 transition-colors cursor-pointer"
+
+                >
 
                   <div className="flex-1">
 
-                    <div className="font-medium text-gray-900">{item.name}</div>
+                    <div className="font-medium text-gray-900 flex items-center gap-2">
+
+                        {item.name}
+
+                        <Edit2 className="w-3 h-3 text-gray-300" />
+
+                    </div>
 
                     <div className="text-xs text-gray-500 mt-1">
 
@@ -924,11 +1036,11 @@ export default function Home() {
 
                   <button 
 
-                    onClick={() => deleteItem(item.id, item.name)}
+                    onClick={(e) => deleteItem(item.id, item.name, e)}
 
                     disabled={deletingId === item.id}
 
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                    className="p-3 -mr-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
 
                     title="删除"
 
@@ -963,6 +1075,210 @@ export default function Home() {
 
 
       </main>
+
+
+
+      {/* Edit Modal */}
+
+      {editingItem && (
+
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+
+            <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10">
+
+                <div className="flex justify-between items-center border-b pb-3">
+
+                    <h3 className="text-lg font-bold text-gray-900">✏️ 编辑物品</h3>
+
+                    <button onClick={() => setEditingItem(null)} className="p-2 hover:bg-gray-100 rounded-full">
+
+                        <X className="w-5 h-5 text-gray-500" />
+
+                    </button>
+
+                </div>
+
+                
+
+                <div className="space-y-4">
+
+                    <div>
+
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">名称</label>
+
+                        <input 
+
+                            type="text" 
+
+                            value={editingItem.name} 
+
+                            onChange={(e) => handleEditChange('name', e.target.value)}
+
+                            className="w-full text-lg p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                        />
+
+                    </div>
+
+                    
+
+                    <div className="grid grid-cols-2 gap-4">
+
+                        <div>
+
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">数量</label>
+
+                            <input 
+
+                                type="number" 
+
+                                value={editingItem.quantity} 
+
+                                onChange={(e) => handleEditChange('quantity', e.target.value)}
+
+                                className="w-full text-lg p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                            />
+
+                        </div>
+
+                        <div>
+
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">单位</label>
+
+                            <input 
+
+                                type="text" 
+
+                                value={editingItem.unit} 
+
+                                onChange={(e) => handleEditChange('unit', e.target.value)}
+
+                                className="w-full text-lg p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                            />
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div>
+
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">过期时间</label>
+
+                        <input 
+
+                            type="date" 
+
+                            value={formatDate(editingItem.expireDate)} 
+
+                            onChange={(e) => handleEditChange('expireDate', e.target.value)}
+
+                            className="w-full text-lg p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                        />
+
+                    </div>
+
+
+
+                    <div className="grid grid-cols-2 gap-4">
+
+                         <div>
+
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">分类</label>
+
+                            <input 
+
+                                type="text" 
+
+                                value={editingItem.category} 
+
+                                onChange={(e) => handleEditChange('category', e.target.value)}
+
+                                className="w-full text-base p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                            />
+
+                        </div>
+
+                         <div>
+
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">位置</label>
+
+                            <input 
+
+                                type="text" 
+
+                                value={editingItem.location} 
+
+                                onChange={(e) => handleEditChange('location', e.target.value)}
+
+                                className="w-full text-base p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+                            />
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div className="flex gap-3 mt-4 pt-2 border-t">
+
+                    <button 
+
+                        onClick={() => setEditingItem(null)}
+
+                        className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+
+                    >
+
+                        取消
+
+                    </button>
+
+                    <button 
+
+                        onClick={saveEdit}
+
+                        disabled={isSavingEdit}
+
+                        className="flex-1 py-3 bg-black text-white font-medium rounded-lg hover:bg-gray-800 transition-colors flex justify-center items-center gap-2"
+
+                    >
+
+                        {isSavingEdit ? (
+
+                            <>
+
+                                <RefreshCw className="w-4 h-4 animate-spin" /> 保存中
+
+                            </>
+
+                        ) : (
+
+                            <>
+
+                                <Check className="w-4 h-4" /> 保存
+
+                            </>
+
+                        )}
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+      )}
 
       
 
