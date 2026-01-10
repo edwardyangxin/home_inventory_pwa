@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Web Speech Demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #output {
+      border: 1px solid #ccc;
+      padding: 10px;
+      min-height: 100px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    button { padding: 10px 20px; margin-right: 10px; cursor: pointer; }
+    .status { color: #666; font-size: 0.9em; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h2>🎙 语音输入（本地 STT）</h2>
+  <button id="start">开始录音</button>
+  <button id="stop" disabled>结束录音</button>
+  <div id="status" class="status">准备就绪</div>
+  <div id="output"></div>
+
+  <script>
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("当前浏览器不支持 Web Speech API");
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.lang = "zh-CN";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      const outputDiv = document.getElementById("output");
+      const statusDiv = document.getElementById("status");
+      const startBtn = document.getElementById("start");
+      const stopBtn = document.getElementById("stop");
+
+      let autoStopTimer = null;
+      let finalTranscript = "";
+
+      recognition.onstart = () => {
+        statusDiv.innerText = "正在录音... (30秒后自动结束)";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        finalTranscript = ""; // 清空之前的记录
+        outputDiv.innerText = "";
+
+        // 4. 如果开始了30s，自动结束录音。
+        autoStopTimer = setTimeout(() => {
+          if (recognition) {
+            console.log("30s timeout reached, stopping...");
+            recognition.stop();
+            statusDiv.innerText = "已停止 (超时)";
+          }
+        }, 30000);
+      };
+
+      recognition.onresult = (event) => {
+        let interimTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // 3. 如果我说了over，也结束。
+        // Check both final and interim for "over"
+        const combinedText = finalTranscript + interimTranscript;
+        if (combinedText.toLowerCase().includes("over")) {
+            console.log("Keyword 'over' detected, stopping...");
+            recognition.stop();
+            statusDiv.innerText = "已停止 (检测到 'over')";
+        }
+
+        outputDiv.innerText = finalTranscript + interimTranscript;
+      };
+
+      recognition.onend = () => {
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        clearTimeout(autoStopTimer);
+        
+        if (finalTranscript || outputDiv.innerText) {
+            statusDiv.innerText = "录音结束，正在上传到 API...";
+            // Simulate API post delay
+            mockPostToAPI(finalTranscript || outputDiv.innerText).then(response => {
+                outputDiv.innerText += "\n\n[API 响应]: " + response;
+                statusDiv.innerText = "处理完成";
+            });
+        } else {
+            statusDiv.innerText = "录音结束 (无内容)";
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error", event.error);
+        statusDiv.innerText = "发生错误: " + event.error;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        clearTimeout(autoStopTimer);
+      };
+
+      // Mock API Post Function
+      function mockPostToAPI(text) {
+        return new Promise(resolve => {
+            console.log("Posting text to API:", text);
+            setTimeout(() => {
+                // Simulating a success response from a backend
+                resolve("成功接收文本，字符长度: " + text.length);
+            }, 1500);
+        });
+      }
+
+      // 1. 我点开录音，开始记录
+      startBtn.onclick = () => {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      // 2. 我点击结束，开始翻译(显示文字)
+      stopBtn.onclick = () => {
+        recognition.stop();
+        statusDiv.innerText = "已手动停止";
+      };
+    }
+  </script>
+</body>
+</html>
