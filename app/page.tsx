@@ -272,7 +272,11 @@ export default function Home() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "";
-    return new Date(dateString).toLocaleDateString("zh-CN");
+    // If the API returns "YYYY-MM-DD", just return it directly to avoid timezone shifts
+    if (dateString.includes('T')) {
+        return dateString.split('T')[0];
+    }
+    return dateString;
   };
 
   return (
