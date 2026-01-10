@@ -112,7 +112,70 @@
 
 ---
 
-## 4. 📊 智能库存周报 (Generate Report)
+## 4. ✏️ 修改库存物品 (Edit Item)
+修改库存中某一行的信息（如名称、数量、过期时间等）。
+
+- **Endpoint:** `/editInventoryItem`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+必须包含 `id`。其他字段可选，仅传入需要修改的字段即可。
+```json
+{
+  "id": "708e041d-9c2f-4da3-b67c-59bb96efcad6",
+  "name": "修改后的名称",
+  "quantity": 5,
+  "unit": "包",
+  "expire_date": "2029-01-01"
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "message": "已更新物品: 修改后的名称",
+  "item": {
+    "id": "708e041d-9c2f-4da3-b67c-59bb96efcad6",
+    "name": "修改后的名称",
+    "category": "待分类",
+    "location": "未指定",
+    "quantity": 5,
+    "unit": "包",
+    "expireDate": "2029-01-01"
+  }
+}
+```
+
+---
+
+## 5. 🗑️ 删除库存物品 (Delete Item)
+根据物品 ID 删除库存中的某一行记录。
+
+- **Endpoint:** `/deleteInventoryItem`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "id": "6821f331-6368-4848-8d90-626f035b0860"
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "message": "已删除物品: 香蕉",
+  "deleted_id": "6821f331-6368-4848-8d90-626f035b0860"
+}
+```
+
+---
+
+## 6. 📊 智能库存周报 (Generate Report)
 利用 AI 分析当前库存，生成食用建议、采购清单和创意食谱。
 
 - **Endpoint:** `/generateInventoryReport`
