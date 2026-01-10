@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -61,7 +61,9 @@ export default function Home() {
   const [isCancelled, setIsCancelled] = useState(false);
   const [updateResponse, setUpdateResponse] = useState<UpdateInventoryResponse | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  
+  // No longer needed separate editMode state for transcript as it's always editable
+  // const [editMode, setEditMode] = useState(false);
 
   // Search Results State
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
@@ -165,14 +167,10 @@ export default function Home() {
       setApiResponse(null);
       setUpdateResponse(null);
       setIsCancelled(false);
-      setEditMode(false);
       setCountdown(null);
       setSearchResults([]); 
       setSearchMessage(null);
       if (countdownRef.current) clearInterval(countdownRef.current);
-      // Note: We don't reset displayMode here to allow searching while in search view,
-      // but typically a new voice command implies a new context. 
-      // Let's reset to 'all' to avoid confusion unless the new command IS a search.
       setDisplayMode('all');
   };
 
@@ -204,7 +202,6 @@ export default function Home() {
 
       if (!res.ok) throw new Error("Delete failed");
       
-      // Update both lists to ensure UI consistency
       setInventory(prev => prev.filter(item => item.id !== id));
       setSearchResults(prev => prev.filter(item => item.id !== id));
     } catch (e) {
@@ -249,7 +246,6 @@ export default function Home() {
           const responseData = await res.json();
           const updatedItem = responseData.item;
           
-          // Update both lists
           setInventory(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
           setSearchResults(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
           
@@ -283,6 +279,8 @@ export default function Home() {
   };
 
   const processText = async (text: string) => {
+      if (!text || text.trim().length === 0) return;
+
       setStatus("正在解析...");
       setIsProcessing(true);
       setUpdateResponse(null); 
@@ -317,7 +315,6 @@ export default function Home() {
           console.error(e);
       } finally {
           setIsProcessing(false);
-          setEditMode(false); 
       }
   };
 
@@ -338,11 +335,10 @@ export default function Home() {
               setSearchResults(data.items || []);
               setSearchMessage(data.message);
               setStatus("查询完成");
-              setDisplayMode('search'); // Switch view
+              setDisplayMode('search'); 
           } else {
               setSearchMessage(data.message || "未找到相关物品");
               setStatus("未找到");
-              // Keep view or switch? Switch to show "Empty" search result is better feedback.
               setSearchResults([]);
               setDisplayMode('search');
           }
@@ -368,7 +364,6 @@ export default function Home() {
           if (timeLeft <= 0) {
               if (countdownRef.current) clearInterval(countdownRef.current);
               setCountdown(null);
-              // Trigger update
               updateInventory(data.data.items);
           }
       }, 1000);
@@ -378,7 +373,6 @@ export default function Home() {
       if (countdownRef.current) clearInterval(countdownRef.current);
       setCountdown(null);
       setIsCancelled(true);
-      setEditMode(true);
       setStatus("已取消自动更新，请编辑");
   };
 
@@ -436,27 +430,27 @@ export default function Home() {
             {status}
         </div>
 
-        {/* Transcript / Edit Area */}
-        <div className="flex-none border border-gray-200 rounded-xl p-4 bg-white min-h-[120px] max-h-[200px] overflow-y-auto shadow-sm">
-            {editMode ? (
-                <div className="flex flex-col gap-2 h-full">
-                    <textarea 
-                        value={transcript}
-                        onChange={(e) => setTranscript(e.target.value)}
-                        className="w-full h-full p-2 border border-blue-200 rounded resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-base"
-                    />
+        {/* Input Area (Voice + Manual) */}
+        <div className="flex-none border border-gray-200 rounded-xl p-3 bg-white min-h-[120px] shadow-sm flex flex-col gap-2 relative focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-shadow">
+            <textarea 
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="点击麦克风说话，或直接在此输入..."
+                className="w-full flex-1 resize-none outline-none text-base text-gray-800 placeholder:text-gray-400 bg-transparent"
+                disabled={isProcessing || isUpdating}
+            />
+            
+            <div className="flex justify-end items-center gap-2">
+                {transcript.length > 0 && !isRecording && !isProcessing && (
                     <button 
                         onClick={() => processText(transcript)}
-                        className="self-end bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+                        className="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 transition-all animate-in zoom-in shadow-md"
+                        title="发送"
                     >
-                        重新解析
+                        <Send className="w-4 h-4" />
                     </button>
-                </div>
-            ) : transcript ? (
-                <p className="text-base text-gray-800 whitespace-pre-wrap">{transcript}</p>
-            ) : (
-                <p className="text-gray-400 italic text-sm text-center mt-8">点击麦克风开始说话...</p>
-            )}
+                )}
+            </div>
         </div>
         
         {/* API Response & Countdown Area */}
@@ -632,7 +626,7 @@ export default function Home() {
 
       </main>
 
-      {/* Edit Modal (same as before) */}
+      {/* Edit Modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10">
