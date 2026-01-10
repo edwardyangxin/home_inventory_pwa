@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2 } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -67,6 +67,7 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<'all' | 'search'>('all');
 
   // Inventory State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -166,9 +167,13 @@ export default function Home() {
       setIsCancelled(false);
       setEditMode(false);
       setCountdown(null);
-      setSearchResults([]); // Clear previous search results
+      setSearchResults([]); 
       setSearchMessage(null);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      // Note: We don't reset displayMode here to allow searching while in search view,
+      // but typically a new voice command implies a new context. 
+      // Let's reset to 'all' to avoid confusion unless the new command IS a search.
+      setDisplayMode('all');
   };
 
   const fetchInventory = async () => {
@@ -186,7 +191,7 @@ export default function Home() {
   };
 
   const deleteItem = async (id: string, name: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent opening edit modal
+    e.stopPropagation(); 
     if (!confirm(`确定要删除 "${name}" 吗?`)) return;
 
     setDeletingId(id);
@@ -199,7 +204,9 @@ export default function Home() {
 
       if (!res.ok) throw new Error("Delete failed");
       
+      // Update both lists to ensure UI consistency
       setInventory(prev => prev.filter(item => item.id !== id));
+      setSearchResults(prev => prev.filter(item => item.id !== id));
     } catch (e) {
       console.error("Failed to delete item", e);
       alert("删除失败，请重试");
@@ -240,8 +247,12 @@ export default function Home() {
           if (!res.ok) throw new Error("Update failed");
 
           const responseData = await res.json();
+          const updatedItem = responseData.item;
           
-          setInventory(prev => prev.map(item => item.id === editingItem.id ? responseData.item : item));
+          // Update both lists
+          setInventory(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
+          setSearchResults(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
+          
           setEditingItem(null); 
           setStatus(`已更新 "${editingItem.name}"`);
       } catch (e) {
@@ -295,10 +306,8 @@ export default function Home() {
 
           if (data.success) {
               if (data.data.retrieval) {
-                  // It's a search query
                   searchInventory(data.data.items);
               } else {
-                  // It's an update action
                   startAutoUpdateTimer(data);
               }
           }
@@ -329,9 +338,13 @@ export default function Home() {
               setSearchResults(data.items || []);
               setSearchMessage(data.message);
               setStatus("查询完成");
+              setDisplayMode('search'); // Switch view
           } else {
               setSearchMessage(data.message || "未找到相关物品");
               setStatus("未找到");
+              // Keep view or switch? Switch to show "Empty" search result is better feedback.
+              setSearchResults([]);
+              setDisplayMode('search');
           }
 
       } catch (e) {
@@ -404,6 +417,9 @@ export default function Home() {
     return dateString;
   };
 
+  // Determine which list to show
+  const currentList = displayMode === 'search' ? searchResults : inventory;
+
   return (
     <div className="flex flex-col items-center min-h-screen p-4 pb-20 gap-6 font-[family-name:var(--font-geist-sans)] max-w-lg mx-auto bg-gray-50">
       <header className="w-full text-center space-y-2 mt-4">
@@ -444,7 +460,7 @@ export default function Home() {
         </div>
         
         {/* API Response & Countdown Area */}
-        {apiResponse && !updateResponse && !isSearching && (searchResults.length === 0) && (
+        {apiResponse && !updateResponse && !isSearching && (
             <div className={`border rounded-lg p-3 animate-in fade-in slide-in-from-bottom-2 ${apiResponse.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -498,33 +514,6 @@ export default function Home() {
              </div>
         )}
 
-         {/* Search Results Area */}
-         {(searchResults.length > 0 || searchMessage) && (
-            <section className="bg-purple-50 border border-purple-200 rounded-lg p-3 animate-in fade-in slide-in-from-bottom-2 space-y-3">
-                <div className="flex items-center gap-2 mb-2">
-                    <span className="bg-purple-200 text-purple-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">Search</span>
-                    <h3 className="text-xs font-bold text-purple-700 uppercase tracking-wider">查询结果</h3>
-                </div>
-                {searchMessage && <p className="text-purple-900 text-sm">{searchMessage}</p>}
-                
-                <div className="grid gap-2">
-                    {searchResults.map((item) => (
-                        <div key={item.id} className="bg-white p-3 rounded-lg border border-purple-100 shadow-sm">
-                            <div className="font-medium text-purple-900">{item.name}</div>
-                            <div className="flex justify-between items-center mt-1">
-                                <div className="text-xs text-purple-600">
-                                    {item.category} · {item.location} · {formatDate(item.expireDate)}
-                                </div>
-                                <div className="text-sm font-bold text-purple-800">
-                                    {item.quantity} {item.unit}
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </section>
-        )}
-
         {/* Error Display */}
         {error && (
              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-600 text-sm">
@@ -560,27 +549,50 @@ export default function Home() {
         <section className="w-full space-y-3">
           <div className="flex justify-between items-center px-1">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Package className="w-5 h-5" /> 当前库存
+              <Package className="w-5 h-5" /> 
+              {displayMode === 'search' ? '查询结果' : '当前库存'}
             </h2>
-            <button 
-              onClick={fetchInventory} 
-              disabled={loadingInventory}
-              className="p-2 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
-              title="刷新库存"
-            >
-              <RefreshCw className={`w-4 h-4 text-gray-600 ${loadingInventory ? 'animate-spin' : ''}`} />
-            </button>
+            
+            <div className="flex items-center gap-2">
+                {displayMode === 'search' && (
+                    <button 
+                        onClick={() => {
+                            setDisplayMode('all');
+                            setSearchResults([]);
+                            setSearchMessage(null);
+                        }}
+                        className="text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors flex items-center gap-1"
+                    >
+                        <ArrowLeft className="w-3 h-3" /> 返回全部
+                    </button>
+                )}
+                
+                <button 
+                  onClick={fetchInventory} 
+                  disabled={loadingInventory}
+                  className="p-2 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
+                  title="刷新库存"
+                >
+                  <RefreshCw className={`w-4 h-4 text-gray-600 ${loadingInventory ? 'animate-spin' : ''}`} />
+                </button>
+            </div>
           </div>
+
+          {displayMode === 'search' && searchMessage && (
+              <div className="bg-purple-50 text-purple-800 text-sm p-2 rounded-lg border border-purple-100">
+                  {searchMessage}
+              </div>
+          )}
 
           <div className="grid gap-3">
             {loadingInventory && inventory.length === 0 ? (
                <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
-            ) : inventory.length > 0 ? (
-              inventory.map((item) => (
+            ) : currentList.length > 0 ? (
+              currentList.map((item) => (
                 <div 
                   key={item.id} 
                   onClick={() => openEditModal(item)}
-                  className="bg-white p-3 rounded-lg border border-gray-100 shadow-sm flex justify-between items-center group"
+                  className={`bg-white p-3 rounded-lg border shadow-sm flex justify-between items-center group cursor-pointer transition-colors active:bg-gray-50 ${displayMode === 'search' ? 'border-purple-200 ring-1 ring-purple-100' : 'border-gray-100'}`}
                 >
                   <div className="flex-1">
                     <div className="font-medium text-gray-900 flex items-center gap-2">
@@ -611,14 +623,16 @@ export default function Home() {
                 </div>
               ))
             ) : (
-              <div className="text-center py-8 text-gray-400 text-sm">暂无库存数据</div>
+              <div className="text-center py-8 text-gray-400 text-sm">
+                  {displayMode === 'search' ? '未找到相关物品' : '暂无库存数据'}
+              </div>
             )}
           </div>
         </section>
 
       </main>
 
-      {/* Edit Modal */}
+      {/* Edit Modal (same as before) */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10">
