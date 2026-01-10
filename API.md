@@ -53,27 +53,67 @@
   "data": {
     "items": [
       {
-        "name": "螺丝粉",
-        "quantity": 2,
-        "unit": "包",
-        "expire_date": "2026-07-09"
-      },
-      {
-        "name": "螺丝粉",
-        "quantity": 2,
-        "unit": "包",
-        "expire_date": "2027-01-09"
+        "name": "牛奶",
+        "action": "QUERY"
       }
-    ]
+    ],
+    "retrieval": true
   },
-  "message": "成功识别。我有螺丝粉共 4 包，其中 2 包在 6 个月后到期，另外 2 包在 1 年后到期。"
+  "message": "成功识别。您是想查询牛奶吗？"
+}
+```
+
+**Action 字段说明:**
+- `ADD`: 新增或补充库存（默认）。
+- `CONSUME`: 消耗库存（减少数量）。
+- `DELETE`: 删除或清理库存。
+- `QUERY`: 查询库存（请调用 `/searchInventory` 接口）。
+
+---
+
+## 3. 🔍 库存查询 (Search Inventory)
+当 `/processVoiceInput` 返回 `retrieval: true` 或用户主动批量查询时调用。
+
+- **Endpoint:** `/searchInventory`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+接收结构化的物品列表（通常来自 `/processVoiceInput`）：
+```json
+{
+  "items": [
+    { "name": "牛奶", "action": "QUERY" },
+    { "name": "螺丝粉", "action": "QUERY" }
+  ]
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "found": true,
+  "message": "找到 1 条相关记录。",
+  "items": [
+    {
+      "id": "...",
+      "name": "牛奶",
+      "category": "待分类",
+      "location": "冰箱",
+      "quantity": 1,
+      "unit": "桶",
+      "expireDate": "2026-01-25",
+      "status": "normal"
+    }
+  ]
 }
 ```
 
 ---
 
-## 3. 🔄 库存同步更新 (Update Inventory)
-接收结构化的物品列表，自动判断是“新增”还是“修改”现有库存，并写入 Google Sheets。
+## 4. 🔄 库存同步更新 (Update Inventory)
+接收结构化的物品列表，根据 `action` 字段执行增、删、改操作。
 
 - **Endpoint:** `/updateInventory`
 - **Method:** `POST`
@@ -88,7 +128,13 @@
       "name": "螺丝粉",
       "quantity": 2,
       "unit": "包",
-      "expire_date": "2026-07-09"
+      "expire_date": "2026-07-09",
+      "action": "ADD"
+    },
+    {
+      "name": "可乐",
+      "quantity": 1,
+      "action": "CONSUME"
     }
   ]
 }
@@ -104,15 +150,20 @@
       "name": "螺丝粉",
       "desc": "增加库存: 2 -> 4 包",
       "expire_date": "2026-07-09"
+    },
+    {
+      "type": "CONSUME",
+      "name": "可乐",
+      "desc": "消耗 1, 剩余 3"
     }
   ],
-  "message": "处理完成：更新 1 项，新增 0 项。"
+  "message": "处理完成。"
 }
 ```
 
 ---
 
-## 4. ✏️ 修改库存物品 (Edit Item)
+## 5. ✏️ 修改库存物品 (Edit Item)
 修改库存中某一行的信息（如名称、数量、过期时间等）。
 
 - **Endpoint:** `/editInventoryItem`
@@ -150,7 +201,7 @@
 
 ---
 
-## 5. 🗑️ 删除库存物品 (Delete Item)
+## 6. 🗑️ 删除库存物品 (Delete Item)
 根据物品 ID 删除库存中的某一行记录。
 
 - **Endpoint:** `/deleteInventoryItem`
@@ -175,7 +226,7 @@
 
 ---
 
-## 6. 📊 智能库存周报 (Generate Report)
+## 7. 📊 智能库存周报 (Generate Report)
 利用 AI 分析当前库存，生成食用建议、采购清单和创意食谱。
 
 - **Endpoint:** `/generateInventoryReport`
