@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -57,6 +57,20 @@ interface MealPlanResponse {
   summary: string;
 }
 
+interface Habit {
+  name: string;
+  type: string;
+  details: string;
+  frequency: string;
+  comment: string;
+}
+
+interface UpdateHabitsResponse {
+  success: boolean;
+  message: string;
+  habits: Habit[];
+}
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -92,6 +106,15 @@ export default function Home() {
   const [isFetchingMealPlan, setIsFetchingMealPlan] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
 
+  // Habits State
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [showHabitsModal, setShowHabitsModal] = useState(false);
+  const [habitInput, setHabitInput] = useState("");
+  const [isUpdatingHabits, setIsUpdatingHabits] = useState(false);
+  const [habitMessage, setHabitMessage] = useState<string | null>(null);
+
+  const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
+
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptRef = useRef(""); 
@@ -119,9 +142,19 @@ export default function Home() {
         setIsRecording(true);
         setStatus("正在录音... (30秒后自动结束)");
         setError(null);
-        resetFlowState();
+        
+        // Only reset main flow if in main mode
+        if (recordingMode === 'main') {
+            resetFlowState();
+            setTranscript("");
+        } else {
+             // For habit mode, maybe we don't clear immediately or we do?
+             // Let's clear for now to avoid appending to old text if that's preferred, 
+             // or keep it to append. Let's clear it for consistency with main.
+             setHabitInput("");
+        }
+
         transcriptRef.current = ""; 
-        setTranscript("");
 
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => {
@@ -131,12 +164,24 @@ export default function Home() {
 
       recognition.onend = () => {
         setIsRecording(false);
+        // Reset mode back to main after recording ends? 
+        // Or keep it? If we reset, the user can't easily record again in modal without clicking button again.
+        // But we need to be careful. Let's keep the mode as is, but maybe reset it when modal closes.
+        
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         
         const finalText = transcriptRef.current;
         
         if (finalText && finalText.trim().length > 0) {
-             processText(finalText);
+             if (recordingMode === 'main') {
+                 processText(finalText);
+             } else {
+                 // In habit mode, we just leave the text in the input, user clicks send.
+                 // Or we could auto-send? The prompt says "input... then update".
+                 // Usually better to let user review for habits as it might be complex.
+                 // We already updated the state in onresult, so just set status.
+                 setStatus("录音结束");
+             }
         } else {
              setStatus("录音结束 (无内容)");
         }
@@ -156,8 +201,13 @@ export default function Home() {
           .map((res: any) => res[0].transcript)
           .join("");
 
-        setTranscript(currentFullTranscript);
         transcriptRef.current = currentFullTranscript;
+
+        if (recordingMode === 'main') {
+            setTranscript(currentFullTranscript);
+        } else {
+            setHabitInput(currentFullTranscript);
+        }
 
         if (currentFullTranscript.toLowerCase().includes("over")) {
           if (recognitionRef.current) {
@@ -215,6 +265,60 @@ export default function Home() {
       } finally {
           setIsFetchingMealPlan(false);
       }
+  };
+
+  const fetchHabits = async () => {
+      try {
+          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/getHabits");
+          if (!res.ok) throw new Error("Failed to fetch habits");
+          const data: Habit[] = await res.json();
+          setHabits(data);
+      } catch (e) {
+          console.error("Failed to fetch habits", e);
+      }
+  };
+
+  const handleUpdateHabits = async () => {
+      if (!habitInput.trim()) return;
+      setIsUpdatingHabits(true);
+      setHabitMessage(null);
+      
+      try {
+          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/updateHabits", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: habitInput }),
+          });
+
+          if (!res.ok) throw new Error("Failed to update habits");
+          const data: UpdateHabitsResponse = await res.json();
+          
+          if (data.success) {
+              setHabits(data.habits);
+              setHabitMessage(data.message);
+              setHabitInput(""); // Clear input on success
+          } else {
+              setHabitMessage("更新失败: " + data.message);
+          }
+      } catch (e) {
+          console.error("Error updating habits", e);
+          setHabitMessage("更新发生错误");
+      } finally {
+          setIsUpdatingHabits(false);
+      }
+  };
+
+  const openHabitsModal = () => {
+      fetchHabits();
+      setShowHabitsModal(true);
+      setRecordingMode('habit'); // Set mode to habit when modal opens
+  };
+
+  const closeHabitsModal = () => {
+      setShowHabitsModal(false);
+      setRecordingMode('main'); // Reset mode when modal closes
+      setHabitMessage(null);
+      if (isRecording) stopRecording("Modal closed");
   };
 
   const deleteItem = async (id: string, name: string, e: React.MouseEvent) => {
@@ -451,13 +555,22 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-gray-900">🎙 家庭库存助手</h1>
             <p className="text-xs text-gray-500">语音录入 & 库存管理</p>
         </div>
-        <button 
-            onClick={fetchMealPlan}
-            className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors shadow-sm"
-            title="饮食推荐"
-        >
-            <ChefHat className="w-6 h-6" />
-        </button>
+        <div className="flex gap-2">
+            <button 
+                onClick={openHabitsModal}
+                className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors shadow-sm"
+                title="生活习惯"
+            >
+                <ClipboardList className="w-6 h-6" />
+            </button>
+            <button 
+                onClick={fetchMealPlan}
+                className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors shadow-sm"
+                title="饮食推荐"
+            >
+                <ChefHat className="w-6 h-6" />
+            </button>
+        </div>
       </header>
 
       <main className="flex-1 flex flex-col w-full gap-4">
@@ -765,6 +878,81 @@ export default function Home() {
                 </div>
             </div>
         </div>
+      )}
+
+      {/* Habits Modal */}
+      {showHabitsModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10 max-h-[90vh] overflow-hidden">
+                  <div className="flex justify-between items-center border-b pb-3">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <ClipboardList className="w-5 h-5 text-blue-500" />
+                          生活习惯 & 购物清单
+                      </h3>
+                      <button onClick={closeHabitsModal} className="p-2 hover:bg-gray-100 rounded-full">
+                          <X className="w-5 h-5 text-gray-500" />
+                      </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                      {habits.length === 0 ? (
+                          <div className="text-center py-8 text-gray-400">暂无习惯数据</div>
+                      ) : (
+                          habits.map((habit, idx) => (
+                              <div key={idx} className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+                                  <div className="flex justify-between items-start mb-1">
+                                      <h4 className="font-bold text-gray-800">{habit.name}</h4>
+                                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{habit.type}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-600 mb-1">{habit.details}</p>
+                                  <div className="flex gap-2 text-[10px] text-gray-400">
+                                      <span>Freq: {habit.frequency}</span>
+                                      {habit.comment && <span>Note: {habit.comment}</span>}
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+                  
+                  {habitMessage && (
+                      <div className={`text-xs p-2 rounded ${habitMessage.includes('失败') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                          {habitMessage}
+                      </div>
+                  )}
+
+                  <div className="pt-2 border-t flex flex-col gap-2">
+                      <label className="text-xs text-gray-500 font-medium">更新习惯 (语音/文字)</label>
+                      <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                              <textarea
+                                  value={habitInput}
+                                  onChange={(e) => setHabitInput(e.target.value)}
+                                  placeholder="例如：我们要经常买牛奶，把香蕉删掉..."
+                                  className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-12"
+                                  disabled={isUpdatingHabits || isRecording}
+                              />
+                          </div>
+                          
+                          <button
+                              onClick={() => isRecording ? stopRecording() : startRecording()}
+                              className={`p-3 rounded-full flex-none transition-colors ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                              title={isRecording ? "停止录音" : "语音输入"}
+                          >
+                              {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+                          </button>
+                          
+                          <button
+                              onClick={handleUpdateHabits}
+                              disabled={isUpdatingHabits || !habitInput.trim()}
+                              className="p-3 bg-blue-600 text-white rounded-full flex-none hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              title="发送更新"
+                          >
+                              {isUpdatingHabits ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Meal Plan Modal */}
