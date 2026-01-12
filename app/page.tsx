@@ -29,11 +29,15 @@ interface ProcessVoiceResponse {
   message: string;
 }
 
+interface SearchResult {
+  query: string;
+  found: boolean;
+  matches: InventoryItem[];
+}
+
 interface SearchInventoryResponse {
   success: boolean;
-  found: boolean;
-  message: string;
-  items: InventoryItem[];
+  results: SearchResult[];
 }
 
 interface UpdateInventoryResponse {
@@ -482,13 +486,16 @@ export default function Home() {
           if (!res.ok) throw new Error("Search failed");
           const data: SearchInventoryResponse = await res.json();
           
-          if (data.success) {
-              setSearchResults(data.items || []);
-              setSearchMessage(data.message);
+          if (data.success && data.results) {
+              const allMatches = data.results.flatMap(result => result.matches);
+              const foundCount = allMatches.length;
+              
+              setSearchResults(allMatches);
+              setSearchMessage(foundCount > 0 ? `找到 ${foundCount} 条相关记录` : "未找到相关物品");
               setStatus("查询完成");
               setDisplayMode('search'); 
           } else {
-              setSearchMessage(data.message || "未找到相关物品");
+              setSearchMessage("未找到相关物品");
               setStatus("未找到");
               setSearchResults([]);
               setDisplayMode('search');

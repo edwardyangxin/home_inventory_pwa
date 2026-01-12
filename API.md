@@ -99,7 +99,7 @@
 {
   "items": [
     { "name": "牛奶", "action": "QUERY" },
-    { "name": "螺丝粉", "action": "QUERY" }
+    { "name": "香蕉", "action": "QUERY" }
   ]
 }
 ```
@@ -108,18 +108,27 @@
 ```json
 {
   "success": true,
-  "found": true,
-  "message": "找到 1 条相关记录。",
-  "items": [
+  "results": [
     {
-      "id": "...",
-      "name": "牛奶",
-      "category": "待分类",
-      "location": "冰箱",
-      "quantity": 1,
-      "unit": "桶",
-      "expireDate": "2026-01-25",
-      "status": "normal"
+      "query": "牛奶",
+      "found": true,
+      "matches": [
+        {
+          "id": "...",
+          "name": "牛奶",
+          "category": "待分类",
+          "location": "冰箱",
+          "quantity": 1,
+          "unit": "桶",
+          "expireDate": "2026-01-25",
+          "status": "normal"
+        }
+      ]
+    },
+    {
+      "query": "香蕉",
+      "found": false,
+      "matches": []
     }
   ]
 }
