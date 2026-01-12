@@ -165,11 +165,18 @@
       "name": "螺丝粉",
       "desc": "增加库存: 2 -> 4 包",
       "expire_date": "2026-07-09"
-    },
+    }
+  ],
+  "items": [
     {
-      "type": "CONSUME",
-      "name": "可乐",
-      "desc": "消耗 1, 剩余 3"
+      "id": "dc694976-e67f-40fb-860d-28efaf6fa119",
+      "name": "螺丝粉",
+      "category": "食品",
+      "location": "橱柜",
+      "quantity": 4,
+      "unit": "包",
+      "expireDate": "2026-07-09",
+      "status": "normal"
     }
   ],
   "message": "处理完成。"

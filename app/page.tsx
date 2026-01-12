@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, Languages } from "lucide-react";
 
 interface InventoryItem {
   id: string;
@@ -44,6 +44,7 @@ interface UpdateInventoryResponse {
     desc: string;
     expire_date: string;
   }[];
+  items?: InventoryItem[];
   message: string;
 }
 
@@ -114,6 +115,7 @@ export default function Home() {
   const [habitMessage, setHabitMessage] = useState<string | null>(null);
 
   const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
+  const [language, setLanguage] = useState<string>('zh-CN');
 
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -124,6 +126,27 @@ export default function Home() {
   useEffect(() => {
     recordingModeRef.current = recordingMode;
   }, [recordingMode]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const browserLang = navigator.language;
+      setLanguage(browserLang.startsWith('zh') ? 'zh-CN' : 'en-US');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = language;
+    }
+  }, [language]);
+
+  const toggleLanguage = () => {
+    const newLang = language === 'zh-CN' ? 'en-US' : 'zh-CN';
+    setLanguage(newLang);
+    // If currently recording, we might want to restart? 
+    // Usually changing lang while recording doesn't take effect until next session.
+    // For simplicity, we assume user switches before recording.
+  };
 
   useEffect(() => {
     fetchInventory();
@@ -138,7 +161,7 @@ export default function Home() {
       }
 
       const recognition = new SpeechRecognition();
-      recognition.lang = "zh-CN";
+      recognition.lang = language;
       recognition.continuous = true;
       recognition.interimResults = true;
       recognitionRef.current = recognition;
@@ -520,7 +543,13 @@ export default function Home() {
           setUpdateResponse(data);
           setStatus("库存更新完成");
           
-          // Refresh inventory list
+          if (data.success && data.items && data.items.length > 0) {
+              setSearchResults(data.items);
+              setSearchMessage(`已更新 ${data.items.length} 项物品`);
+              setDisplayMode('search');
+          }
+          
+          // Refresh inventory list in background
           fetchInventory();
       } catch (e) {
           setStatus("更新失败");
@@ -545,7 +574,15 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center min-h-screen p-4 pb-20 gap-6 font-[family-name:var(--font-geist-sans)] max-w-lg mx-auto bg-gray-50">
       <header className="w-full flex items-center justify-between mt-4">
-        <div className="w-10"></div> {/* Spacer for centering */}
+        <div className="w-10">
+            <button 
+                onClick={toggleLanguage}
+                className="w-10 h-10 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm text-xs font-bold"
+                title="切换语言 (Switch Language)"
+            >
+                {language === 'zh-CN' ? '中' : 'En'}
+            </button>
+        </div>
         <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900">🎙 家庭库存助手</h1>
             <p className="text-xs text-gray-500">语音录入 & 库存管理</p>
