@@ -119,6 +119,11 @@ export default function Home() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const transcriptRef = useRef(""); 
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingModeRef = useRef<'main' | 'habit'>('main');
+
+  useEffect(() => {
+    recordingModeRef.current = recordingMode;
+  }, [recordingMode]);
 
   useEffect(() => {
     fetchInventory();
@@ -144,13 +149,11 @@ export default function Home() {
         setError(null);
         
         // Only reset main flow if in main mode
-        if (recordingMode === 'main') {
+        if (recordingModeRef.current === 'main') {
             resetFlowState();
             setTranscript("");
         } else {
-             // For habit mode, maybe we don't clear immediately or we do?
-             // Let's clear for now to avoid appending to old text if that's preferred, 
-             // or keep it to append. Let's clear it for consistency with main.
+             // For habit mode, clear input
              setHabitInput("");
         }
 
@@ -164,22 +167,14 @@ export default function Home() {
 
       recognition.onend = () => {
         setIsRecording(false);
-        // Reset mode back to main after recording ends? 
-        // Or keep it? If we reset, the user can't easily record again in modal without clicking button again.
-        // But we need to be careful. Let's keep the mode as is, but maybe reset it when modal closes.
-        
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         
         const finalText = transcriptRef.current;
         
         if (finalText && finalText.trim().length > 0) {
-             if (recordingMode === 'main') {
+             if (recordingModeRef.current === 'main') {
                  processText(finalText);
              } else {
-                 // In habit mode, we just leave the text in the input, user clicks send.
-                 // Or we could auto-send? The prompt says "input... then update".
-                 // Usually better to let user review for habits as it might be complex.
-                 // We already updated the state in onresult, so just set status.
                  setStatus("录音结束");
              }
         } else {
@@ -203,7 +198,7 @@ export default function Home() {
 
         transcriptRef.current = currentFullTranscript;
 
-        if (recordingMode === 'main') {
+        if (recordingModeRef.current === 'main') {
             setTranscript(currentFullTranscript);
         } else {
             setHabitInput(currentFullTranscript);
@@ -239,7 +234,7 @@ export default function Home() {
   const fetchInventory = async () => {
     setLoadingInventory(true);
     try {
-      const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/previewSheetData");
+      const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/previewSheetData");
       if (!res.ok) throw new Error("Fetch failed");
       const data: InventoryItem[] = await res.json();
       setInventory(data);
@@ -254,7 +249,7 @@ export default function Home() {
       setIsFetchingMealPlan(true);
       setShowMealModal(true); // Open modal immediately to show loading state
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/recommendMealPlan");
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/recommendMealPlan");
           if (!res.ok) throw new Error("Failed to fetch meal plan");
           const data: MealPlanResponse = await res.json();
           setMealPlan(data);
@@ -269,7 +264,7 @@ export default function Home() {
 
   const fetchHabits = async () => {
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/getHabits");
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/getHabits");
           if (!res.ok) throw new Error("Failed to fetch habits");
           const data: Habit[] = await res.json();
           setHabits(data);
@@ -284,7 +279,7 @@ export default function Home() {
       setHabitMessage(null);
       
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/updateHabits", {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/updateHabits", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ text: habitInput }),
@@ -327,7 +322,7 @@ export default function Home() {
 
     setDeletingId(id);
     try {
-      const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/deleteInventoryItem", {
+      const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/deleteInventoryItem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -368,7 +363,7 @@ export default function Home() {
             expire_date: editingItem.expireDate 
           };
 
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/editInventoryItem", {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/editInventoryItem", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -423,7 +418,7 @@ export default function Home() {
       setSearchMessage(null);
 
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/processVoiceInput", {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/processVoiceInput", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
@@ -455,7 +450,7 @@ export default function Home() {
       setStatus("正在查询库存...");
       setIsSearching(true);
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/searchInventory", {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/searchInventory", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ items }),
@@ -513,7 +508,7 @@ export default function Home() {
       setStatus("正在更新库存...");
       setIsUpdating(true);
       try {
-          const res = await fetch("https://us-central1-home-inventory-483623.cloudfunctions.net/updateInventory", {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/updateInventory", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ items }),

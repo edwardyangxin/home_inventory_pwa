@@ -1,6 +1,6 @@
 # 🏠 家庭库存管理系统 API 文档
 
-**Base URL:** `https://us-central1-home-inventory-483623.cloudfunctions.net`
+**Base URL:** `https://home-inventory-service-392917037016.us-central1.run.app`
 
 本文档描述了家庭库存管理系统的后端接口，包含库存预览、语音录入解析、库存同步更新以及智能周报生成。
 
