@@ -1,7 +1,26 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, Languages } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList } from "lucide-react";
+
+type SpeechRecognitionConstructor = new () => SpeechRecognition;
+
+type SpeechRecognitionProvider = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+type ProcessedItem = {
+  name: string;
+  quantity?: number;
+  unit?: string;
+  expire_date?: string;
+  action?: string;
+  type?: string;
+  details?: string;
+  frequency?: string;
+  comment?: string;
+};
 
 interface InventoryItem {
   id: string;
@@ -18,13 +37,7 @@ interface ProcessVoiceResponse {
   success: boolean;
   data: {
     target: string;
-    items: {
-      name: string;
-      quantity?: number;
-      unit?: string;
-      expire_date?: string;
-      action?: string;
-    }[];
+    items: ProcessedItem[];
     retrieval?: boolean;
   };
   message: string;
@@ -97,7 +110,6 @@ export default function Home() {
   
   // Auto-Update States
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [isCancelled, setIsCancelled] = useState(false);
   const [updateResponse, setUpdateResponse] = useState<UpdateInventoryResponse | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   
@@ -134,10 +146,10 @@ export default function Home() {
   const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
   const [language, setLanguage] = useState<string>('zh-CN');
 
-  const recognitionRef = useRef<any>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef(""); 
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingModeRef = useRef<'main' | 'habit'>('main');
 
   useEffect(() => {
@@ -259,7 +271,6 @@ export default function Home() {
   const resetFlowState = () => {
       setApiResponse(null);
       setUpdateResponse(null);
-      setIsCancelled(false);
       setCountdown(null);
       setSearchResults([]); 
       setSearchMessage(null);
@@ -393,8 +404,6 @@ export default function Home() {
           });
 
           if (!res.ok) throw new Error("Delete habit failed");
-          setHabits(prev => prev.filter(h => habit.name !== name)); // Wait, naming conflict below
-          // I'll fix the naming in the next step to be safer
           setHabits(prev => prev.filter(h => h.name !== name));
           setHabitMessage(`已删除 "${name}"`);
       } catch (e) {
@@ -683,7 +692,6 @@ export default function Home() {
   const cancelAutoUpdate = () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
       setCountdown(null);
-      setIsCancelled(true);
       setStatus("已取消自动更新，请编辑");
   };
 
