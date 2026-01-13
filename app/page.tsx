@@ -177,19 +177,21 @@ export default function Home() {
     // For simplicity, we assume user switches before recording.
   };
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchInventory();
 
     if (typeof window !== "undefined") {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const speechRecognitionProvider = window as SpeechRecognitionProvider;
+      const SpeechRecognitionCtor =
+        speechRecognitionProvider.SpeechRecognition || speechRecognitionProvider.webkitSpeechRecognition;
 
-      if (!SpeechRecognition) {
+      if (!SpeechRecognitionCtor) {
         setError("当前浏览器不支持 Web Speech API");
         return;
       }
 
-      const recognition = new SpeechRecognition();
+      const recognition = new SpeechRecognitionCtor();
       recognition.lang = language;
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -230,7 +232,7 @@ export default function Home() {
         }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         console.error("Speech Error:", event.error);
         if (event.error === 'no-speech') {
             setStatus("未检测到语音");
@@ -239,9 +241,9 @@ export default function Home() {
         }
       };
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         const currentFullTranscript = Array.from(event.results)
-          .map((res: any) => res[0].transcript)
+          .map((result) => result[0]?.transcript ?? "")
           .join("");
 
         transcriptRef.current = currentFullTranscript;
@@ -267,6 +269,7 @@ export default function Home() {
         if (countdownRef.current) clearInterval(countdownRef.current);
     }
   }, []);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const resetFlowState = () => {
       setApiResponse(null);
@@ -320,7 +323,7 @@ export default function Home() {
       }
   };
 
-  const updateHabits = async (items: any[]) => {
+  const updateHabits = async (items: ProcessedItem[]) => {
       setStatus("正在更新习惯...");
       setIsUpdating(true);
       try {
@@ -333,10 +336,6 @@ export default function Home() {
           if (!res.ok) throw new Error("Update habits failed");
           
           const data: UpdateHabitsResponse = await res.json();
-          setUpdateResponse({
-              ...data,
-              changes: [] // Habits API might not return changes in the same format, but we need to satisfy the type or adjust it.
-          } as any);
           setHabits(data.habits);
           setStatus("习惯更新完成");
           
@@ -483,9 +482,10 @@ export default function Home() {
       setEditingItem({ ...item }); 
   };
 
-  const handleEditChange = (field: keyof InventoryItem, value: any) => {
+  const handleEditChange = (field: keyof InventoryItem, value: string) => {
       if (!editingItem) return;
-      setEditingItem({ ...editingItem, [field]: value });
+      const nextValue = field === "quantity" ? Number(value) : value;
+      setEditingItem({ ...editingItem, [field]: nextValue });
   };
 
   const saveEdit = async () => {
@@ -551,7 +551,6 @@ export default function Home() {
       setStatus("正在解析...");
       setIsProcessing(true);
       setUpdateResponse(null); 
-      setIsCancelled(false);
       setCountdown(null);
       setSearchResults([]);
       setSearchMessage(null);
@@ -593,7 +592,7 @@ export default function Home() {
       }
   };
 
-  const searchInventory = async (items: any[]) => {
+  const searchInventory = async (items: ProcessedItem[]) => {
       setStatus("正在查询库存...");
       setIsSearching(true);
       try {
@@ -630,7 +629,7 @@ export default function Home() {
       }
   };
 
-  const searchHabits = async (items: any[]) => {
+  const searchHabits = async (items: ProcessedItem[]) => {
       setStatus("正在查询习惯...");
       setIsSearching(true);
       try {
@@ -695,7 +694,7 @@ export default function Home() {
       setStatus("已取消自动更新，请编辑");
   };
 
-  const updateInventory = async (items: any[]) => {
+  const updateInventory = async (items: ProcessedItem[]) => {
       setStatus("正在更新库存...");
       setIsUpdating(true);
       try {
@@ -1350,7 +1349,7 @@ export default function Home() {
       )}
       
       <footer className="text-[10px] text-gray-400 text-center pb-2">
-        PWA v1.0 · "Over" to stop · 30s timeout
+        PWA v1.0 · &quot;Over&quot; to stop · 30s timeout
       </footer>
     </div>
   );
