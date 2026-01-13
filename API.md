@@ -347,17 +347,25 @@
 
 ---
 
-## 10. 🔄 更新习惯 (Update Habits)
-根据用户的自然语言输入，智能更新生活习惯/购物清单（新增、修改或删除）。
+## 10. 🔄 更新习惯/菜谱 (Update Habits)
+当 `/processVoiceInput` 返回 `target: "HABIT"` 且 `action` 为 `ADD/DELETE/SET` 时调用。用于增量更新生活习惯、常备菜谱或偏好。
 
 - **Endpoint:** `/updateHabits`
 - **Method:** `POST`
 - **Content-Type:** `application/json`
 
 ### Request Body
+接收 `/processVoiceInput` 返回 of the `data` 对象中的 `items` 部分：
 ```json
 {
-  "text": "我们经常要囤一下洗发水和沐浴露，然后删掉香蕉的记录"
+  "items": [
+    {
+      "name": "烤红薯",
+      "type": "菜谱",
+      "details": "300度，30分钟，steam&crisp",
+      "action": "ADD"
+    }
+  ]
 }
 ```
 
@@ -366,15 +374,71 @@
 {
   "success": true,
   "message": "Habits updated successfully",
-  "habits": [
+  "changes": [
     {
-      "name": "洗发水",
-      "type": "必需品",
-      "details": "定期囤货",
-      "frequency": "定期购买",
-      "comment": ""
+      "type": "ADD",
+      "name": "烤红薯",
+      "desc": "新增习惯/菜谱"
     }
   ]
+}
+```
+
+---
+
+## 11. ✏️ 修改习惯 (Edit Habit)
+修改已有的生活习惯、菜谱或偏好。
+
+- **Endpoint:** `/editHabit`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+必须包含 `old_name` 用于定位。其他字段（name, type, details, frequency, comment）可选。
+```json
+{
+  "old_name": "烤红薯",
+  "name": "烤红薯 (空气炸锅版)",
+  "details": "200度，25分钟"
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "message": "已更新习惯: 烤红薯 (空气炸锅版)",
+  "habit": {
+    "name": "烤红薯 (空气炸锅版)",
+    "type": "菜谱",
+    "details": "200度，25分钟",
+    "frequency": "偶尔",
+    "comment": ""
+  }
+}
+```
+
+---
+
+## 12. 🗑️ 删除习惯 (Delete Habit)
+根据名称删除生活习惯、菜谱或偏好。
+
+- **Endpoint:** `/deleteHabit`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "name": "烤红薯 (空气炸锅版)"
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "message": "已删除习惯: 烤红薯 (空气炸锅版)"
 }
 ```
 

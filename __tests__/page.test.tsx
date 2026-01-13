@@ -44,7 +44,7 @@ describe('Home Page Integration Tests', () => {
   }
 
   it('Flow 1: Inventory Voice Update', async () => {
-    (global.fetch as any).mockResolvedValue({
+    (global.fetch as any).mockResolvedValueOnce({
       ok: true,
       json: async () => MOCK_INVENTORY,
     });
@@ -327,12 +327,10 @@ describe('Home Page Integration Tests', () => {
         ok: true,
         json: async () => ({
             success: true,
-            results: [
-                {
-                    query: '搜索物品',
-                    matches: [{ id: '99', name: '搜索到的物品', quantity: 1, unit: '个', category: '搜索', location: '位置', expireDate: '2026-01-01', status: 'normal' }]
-                }
-            ]
+            results: [{
+                query: '搜索物品',
+                matches: [{ id: '99', name: '搜索到的物品', quantity: 1, unit: '个', category: '搜索', location: '位置', expireDate: '2026-01-01', status: 'normal' }]
+            }]
         })
     });
 
@@ -343,5 +341,89 @@ describe('Home Page Integration Tests', () => {
     // Verify Search Results Mode
     expect(await screen.findByText('查询结果')).not.toBeNull();
     expect(await screen.findByText('搜索到的物品')).not.toBeNull();
+  })
+
+  it('Flow 7: Delete Habit', async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_INVENTORY,
+    });
+    vi.spyOn(window, 'confirm').mockImplementation(() => true);
+
+    render(<Home />)
+    
+    (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_HABITS
+    });
+
+    await act(async () => {
+        fireEvent.click(screen.getByTitle('生活习惯'));
+    });
+    expect(await screen.findByText('早起')).not.toBeNull();
+
+    (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, message: '已删除习惯' })
+    });
+
+    // In modal, find delete button. We use findAllByTitle and take the one that's likely the habit one
+    const deleteBtns = screen.getAllByTitle('删除');
+    // Habit delete button is inside the modal list
+    const habitDeleteBtn = deleteBtns.find(btn => btn.closest('.fixed')); // Modal is fixed
+
+    await act(async () => {
+        fireEvent.click(habitDeleteBtn!);
+    });
+
+    await waitFor(() => {
+        expect(screen.queryByText('早起')).toBeNull();
+    });
+  })
+
+  it('Flow 8: Edit Habit', async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_INVENTORY,
+    });
+
+    render(<Home />)
+    
+    (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => MOCK_HABITS
+    });
+
+    await act(async () => {
+        fireEvent.click(screen.getByTitle('生活习惯'));
+    });
+    await screen.findByText('早起');
+
+    const editBtns = screen.getAllByTitle('编辑');
+    const habitEditBtn = editBtns.find(btn => btn.closest('.fixed'));
+
+    await act(async () => {
+        fireEvent.click(habitEditBtn!);
+    });
+    expect(await screen.findByText('✏️ 编辑习惯/清单')).not.toBeNull();
+
+    (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+            success: true,
+            habit: { ...MOCK_HABITS[0], name: '晚起', details: '10点起床' }
+        })
+    });
+
+    fireEvent.change(screen.getByDisplayValue('早起'), { target: { value: '晚起' } });
+
+    await act(async () => {
+        fireEvent.click(screen.getByText('保存'));
+    });
+
+    await waitFor(() => {
+        expect(screen.queryByText('晚起')).not.toBeNull();
+        expect(screen.queryByText('10点起床')).not.toBeNull();
+    });
   })
 })

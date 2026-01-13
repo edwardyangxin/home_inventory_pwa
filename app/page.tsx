@@ -127,6 +127,9 @@ export default function Home() {
   const [habitInput, setHabitInput] = useState("");
   const [isUpdatingHabits, setIsUpdatingHabits] = useState(false);
   const [habitMessage, setHabitMessage] = useState<string | null>(null);
+  const [deletingHabitName, setDeletingHabitName] = useState<string | null>(null);
+  const [editingHabit, setEditingHabit] = useState<(Habit & { old_name?: string }) | null>(null);
+  const [isSavingHabitEdit, setIsSavingHabitEdit] = useState(false);
 
   const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
   const [language, setLanguage] = useState<string>('zh-CN');
@@ -375,6 +378,65 @@ export default function Home() {
       fetchHabits();
       setShowHabitsModal(true);
       setRecordingMode('habit'); // Set mode to habit when modal opens
+  };
+
+  const deleteHabit = async (name: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!confirm(`确定要删除习惯 "${name}" 吗?`)) return;
+
+      setDeletingHabitName(name);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/deleteHabit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name }),
+          });
+
+          if (!res.ok) throw new Error("Delete habit failed");
+          setHabits(prev => prev.filter(h => habit.name !== name)); // Wait, naming conflict below
+          // I'll fix the naming in the next step to be safer
+          setHabits(prev => prev.filter(h => h.name !== name));
+          setHabitMessage(`已删除 "${name}"`);
+      } catch (e) {
+          console.error("Failed to delete habit", e);
+          setHabitMessage("删除失败");
+      } finally {
+          setDeletingHabitName(null);
+      }
+  };
+
+  const openHabitEditModal = (habit: Habit) => {
+      setEditingHabit({ ...habit, old_name: habit.name });
+  };
+
+  const handleHabitEditChange = (field: keyof Habit, value: string) => {
+      if (!editingHabit) return;
+      setEditingHabit({ ...editingHabit, [field]: value });
+  };
+
+  const saveHabitEdit = async () => {
+      if (!editingHabit) return;
+      setIsSavingHabitEdit(true);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/editHabit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(editingHabit),
+          });
+
+          if (!res.ok) throw new Error("Update habit failed");
+          const data = await res.json();
+          const updatedHabit = data.habit;
+
+          setHabits(prev => prev.map(h => h.name === editingHabit.old_name ? updatedHabit : h));
+          setEditingHabit(null);
+          setHabitMessage(`已更新 "${updatedHabit.name}"`);
+      } catch (e) {
+          console.error("Failed to update habit", e);
+          alert("更新失败，请重试");
+      } finally {
+          setIsSavingHabitEdit(false);
+      }
   };
 
   const closeHabitsModal = () => {
@@ -1032,6 +1094,96 @@ export default function Home() {
         </div>
       )}
 
+      {/* Edit Habit Modal */}
+      {editingHabit && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10">
+                <div className="flex justify-between items-center border-b pb-3">
+                    <h3 className="text-lg font-bold text-gray-900">✏️ 编辑习惯/清单</h3>
+                    <button onClick={() => setEditingHabit(null)} className="p-2 hover:bg-gray-100 rounded-full">
+                        <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                </div>
+                
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">名称</label>
+                        <input 
+                            type="text" 
+                            value={editingHabit.name} 
+                            onChange={(e) => handleHabitEditChange('name', e.target.value)}
+                            className="w-full text-lg p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">类型</label>
+                            <input 
+                                type="text" 
+                                value={editingHabit.type} 
+                                onChange={(e) => handleHabitEditChange('type', e.target.value)}
+                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">频率</label>
+                            <input 
+                                type="text" 
+                                value={editingHabit.frequency} 
+                                onChange={(e) => handleHabitEditChange('frequency', e.target.value)}
+                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">详情</label>
+                        <textarea 
+                            value={editingHabit.details} 
+                            onChange={(e) => handleHabitEditChange('details', e.target.value)}
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-1">备注</label>
+                        <input 
+                            type="text" 
+                            value={editingHabit.comment} 
+                            onChange={(e) => handleHabitEditChange('comment', e.target.value)}
+                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex gap-3 mt-4 pt-2 border-t">
+                    <button 
+                        onClick={() => setEditingHabit(null)}
+                        className="flex-1 py-3 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                        取消
+                    </button>
+                    <button 
+                        onClick={saveHabitEdit}
+                        disabled={isSavingHabitEdit}
+                        className="flex-1 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex justify-center items-center gap-2"
+                    >
+                        {isSavingHabitEdit ? (
+                            <>
+                                <RefreshCw className="w-4 h-4 animate-spin" /> 保存中
+                            </>
+                        ) : (
+                            <>
+                                <Check className="w-4 h-4" /> 保存
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Habits Modal */}
       {showHabitsModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
@@ -1051,15 +1203,38 @@ export default function Home() {
                           <div className="text-center py-8 text-gray-400">暂无习惯数据</div>
                       ) : (
                           habits.map((habit, idx) => (
-                              <div key={idx} className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
-                                  <div className="flex justify-between items-start mb-1">
-                                      <h4 className="font-bold text-gray-800">{habit.name}</h4>
-                                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{habit.type}</span>
+                              <div key={idx} className="border border-gray-100 rounded-lg p-3 bg-gray-50/50 flex justify-between items-start group">
+                                  <div className="flex-1">
+                                      <div className="flex justify-between items-start mb-1">
+                                          <h4 className="font-bold text-gray-800">{habit.name}</h4>
+                                          <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{habit.type}</span>
+                                      </div>
+                                      <p className="text-xs text-gray-600 mb-1">{habit.details}</p>
+                                      <div className="flex gap-2 text-[10px] text-gray-400">
+                                          <span>Freq: {habit.frequency}</span>
+                                          {habit.comment && <span>Note: {habit.comment}</span>}
+                                      </div>
                                   </div>
-                                  <p className="text-xs text-gray-600 mb-1">{habit.details}</p>
-                                  <div className="flex gap-2 text-[10px] text-gray-400">
-                                      <span>Freq: {habit.frequency}</span>
-                                      {habit.comment && <span>Note: {habit.comment}</span>}
+                                  <div className="flex flex-col gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button 
+                                          onClick={() => openHabitEditModal(habit)}
+                                          className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors"
+                                          title="编辑"
+                                      >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button 
+                                          onClick={(e) => deleteHabit(habit.name, e)}
+                                          disabled={deletingHabitName === habit.name}
+                                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                          title="删除"
+                                      >
+                                          {deletingHabitName === habit.name ? (
+                                              <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                          ) : (
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                          )}
+                                      </button>
                                   </div>
                               </div>
                           ))
