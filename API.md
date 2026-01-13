@@ -57,6 +57,7 @@
 {
   "success": true,
   "data": {
+    "target": "INVENTORY",
     "items": [
       {
         "name": "螺丝粉",
@@ -66,28 +67,30 @@
         "category": "食品",
         "location": "橱柜",
         "action": "ADD"
-      },
-      {
-        "name": "牛奶",
-        "action": "QUERY"
       }
     ],
-    "retrieval": true
+    "retrieval": false
   },
-  "message": "成功识别。我有螺丝粉共 2 包..."
+  "message": "成功识别 (INVENTORY)。购买了2包螺丝粉。"
 }
 ```
+
+**Target 字段说明:**
+- `INVENTORY`: 涉及实时库存的操作。下一步应调用 `/updateInventory` (或 `/searchInventory`)。
+- `HABIT`: 涉及习惯、菜谱或偏好的操作。下一步应调用 `/updateHabits`。
 
 **Action 字段说明:**
 - `ADD`: 新增或补充库存（默认）。
 - `CONSUME`: 消耗库存（减少数量）。
 - `DELETE`: 删除或清理库存。
-- `QUERY`: 查询库存（请调用 `/searchInventory` 接口）。
+- `SET`: 校准库存（将数量直接更新为指定值，用于“只剩下”、“现有”等场景）。
+- `QUERY`: 查询操作（根据 `target` 分别调用查询接口）。
 
 ---
+--- 
 
 ## 4. 🔍 库存查询 (Search Inventory)
-当 `/processVoiceInput` 返回 `retrieval: true` 或用户主动批量查询时调用。
+当 `/processVoiceInput` 返回 `target: "INVENTORY"` 且 `action: "QUERY"` 时调用。
 
 - **Endpoint:** `/searchInventory`
 - **Method:** `POST`
@@ -98,8 +101,7 @@
 ```json
 {
   "items": [
-    { "name": "牛奶", "action": "QUERY" },
-    { "name": "香蕉", "action": "QUERY" }
+    { "name": "牛奶", "action": "QUERY" }
   ]
 }
 ```
@@ -124,11 +126,46 @@
           "status": "normal"
         }
       ]
-    },
+    }
+  ]
+}
+```
+
+---
+
+## 4b. 📖 习惯/菜谱查询 (Search Habits)
+当 `/processVoiceInput` 返回 `target: "HABIT"` 且用户有查询意图时调用。
+
+- **Endpoint:** `/searchHabits`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "items": [
+    { "name": "红薯" }
+  ]
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "results": [
     {
-      "query": "香蕉",
-      "found": false,
-      "matches": []
+      "query": "红薯",
+      "found": true,
+      "matches": [
+        {
+          "name": "烤红薯",
+          "type": "菜谱",
+          "details": "300度，30分钟，steam&crisp",
+          "frequency": "偶尔",
+          "comment": ""
+        }
+      ]
     }
   ]
 }
@@ -137,14 +174,14 @@
 ---
 
 ## 5. 🔄 库存同步更新 (Update Inventory)
-接收结构化的物品列表，根据 `action` 字段执行增、删、改操作。
+当 `/processVoiceInput` 返回 `target: "INVENTORY"` 且 `action` 为 `ADD/CONSUME/DELETE/SET` 时调用。
 
 - **Endpoint:** `/updateInventory`
 - **Method:** `POST`
 - **Content-Type:** `application/json`
 
 ### Request Body
-接收 `/processVoiceInput` 返回的 `data` 对象部分：
+接收 `/processVoiceInput` 返回的 `data` 对象中的 `items` 部分：
 ```json
 {
   "items": [
@@ -154,11 +191,6 @@
       "unit": "包",
       "expire_date": "2026-07-09",
       "action": "ADD"
-    },
-    {
-      "name": "可乐",
-      "quantity": 1,
-      "action": "CONSUME"
     }
   ]
 }

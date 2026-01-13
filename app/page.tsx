@@ -17,6 +17,7 @@ interface InventoryItem {
 interface ProcessVoiceResponse {
   success: boolean;
   data: {
+    target: string;
     items: {
       name: string;
       quantity?: number;
@@ -38,6 +39,15 @@ interface SearchResult {
 interface SearchInventoryResponse {
   success: boolean;
   results: SearchResult[];
+}
+
+interface SearchHabitsResponse {
+  success: boolean;
+  results: {
+    query: string;
+    found: boolean;
+    matches: Habit[];
+  }[];
 }
 
 interface UpdateInventoryResponse {
@@ -92,7 +102,7 @@ export default function Home() {
   const [isUpdating, setIsUpdating] = useState(false);
   
   // Search Results State
-  const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
+  const [searchResults, setSearchResults] = useState<(InventoryItem | Habit)[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'all' | 'search'>('all');
@@ -199,11 +209,7 @@ export default function Home() {
         const finalText = transcriptRef.current;
         
         if (finalText && finalText.trim().length > 0) {
-             if (recordingModeRef.current === 'main') {
-                 processText(finalText);
-             } else {
-                 setStatus("录音结束");
-             }
+             processText(finalText);
         } else {
              setStatus("录音结束 (无内容)");
         }
@@ -300,12 +306,47 @@ export default function Home() {
       }
   };
 
-  const handleUpdateHabits = async () => {
+  const updateHabits = async (items: any[]) => {
+      setStatus("正在更新习惯...");
+      setIsUpdating(true);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/updateHabits", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items }),
+          });
+          
+          if (!res.ok) throw new Error("Update habits failed");
+          
+          const data: UpdateHabitsResponse = await res.json();
+          setUpdateResponse({
+              ...data,
+              changes: [] // Habits API might not return changes in the same format, but we need to satisfy the type or adjust it.
+          } as any);
+          setHabits(data.habits);
+          setStatus("习惯更新完成");
+          
+          if (data.success && data.habits && data.habits.length > 0) {
+              setSearchResults(data.habits);
+              setSearchMessage(`已更新 ${data.habits.length} 项习惯`);
+              setDisplayMode('search');
+          }
+      } catch (e) {
+          setStatus("更新失败");
+          setError("无法更新习惯");
+          console.error(e);
+      } finally {
+          setIsUpdating(false);
+      }
+  };
+
+  const handleManualUpdateHabits = async () => {
       if (!habitInput.trim()) return;
       setIsUpdatingHabits(true);
       setHabitMessage(null);
       
       try {
+          // Manual update from modal still uses text for now as it's a direct entry
           const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/updateHabits", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -318,7 +359,7 @@ export default function Home() {
           if (data.success) {
               setHabits(data.habits);
               setHabitMessage(data.message);
-              setHabitInput(""); // Clear input on success
+              setHabitInput(""); 
           } else {
               setHabitMessage("更新失败: " + data.message);
           }
@@ -358,7 +399,7 @@ export default function Home() {
       if (!res.ok) throw new Error("Delete failed");
       
       setInventory(prev => prev.filter(item => item.id !== id));
-      setSearchResults(prev => prev.filter(item => item.id !== id));
+      setSearchResults(prev => prev.filter(item => 'id' in item ? item.id !== id : true));
     } catch (e) {
       console.error("Failed to delete item", e);
       alert("删除失败，请重试");
@@ -402,7 +443,7 @@ export default function Home() {
           const updatedItem = responseData.item;
           
           setInventory(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
-          setSearchResults(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
+          setSearchResults(prev => prev.map(item => ('id' in item && item.id === editingItem.id) ? updatedItem : item));
           
           setEditingItem(null); 
           setStatus(`已更新 "${editingItem.name}"`);
@@ -458,8 +499,16 @@ export default function Home() {
           setStatus("解析完成");
 
           if (data.success) {
-              if (data.data.retrieval) {
-                  searchInventory(data.data.items);
+              const target = data.data.target;
+              const isRetrieval = data.data.retrieval;
+              const items = data.data.items;
+
+              if (isRetrieval) {
+                  if (target === 'HABIT') {
+                      searchHabits(items);
+                  } else {
+                      searchInventory(items);
+                  }
               } else {
                   startAutoUpdateTimer(data);
               }
@@ -510,6 +559,43 @@ export default function Home() {
       }
   };
 
+  const searchHabits = async (items: any[]) => {
+      setStatus("正在查询习惯...");
+      setIsSearching(true);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/searchHabits", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items }),
+          });
+
+          if (!res.ok) throw new Error("Search habits failed");
+          const data: SearchHabitsResponse = await res.json();
+          
+          if (data.success && data.results) {
+              const allMatches = data.results.flatMap(result => result.matches);
+              const foundCount = allMatches.length;
+              
+              setSearchResults(allMatches);
+              setSearchMessage(foundCount > 0 ? `找到 ${foundCount} 条相关记录` : "未找到相关习惯");
+              setStatus("查询完成");
+              setDisplayMode('search'); 
+          } else {
+              setSearchMessage("未找到相关习惯");
+              setStatus("未找到");
+              setSearchResults([]);
+              setDisplayMode('search');
+          }
+
+      } catch (e) {
+          console.error("Search habits error", e);
+          setError("查询习惯失败");
+          setStatus("查询出错");
+      } finally {
+          setIsSearching(false);
+      }
+  };
+
   const startAutoUpdateTimer = (data: ProcessVoiceResponse) => {
       setCountdown(5);
       if (countdownRef.current) clearInterval(countdownRef.current);
@@ -522,7 +608,12 @@ export default function Home() {
           if (timeLeft <= 0) {
               if (countdownRef.current) clearInterval(countdownRef.current);
               setCountdown(null);
-              updateInventory(data.data.items);
+              
+              if (data.data.target === 'HABIT') {
+                  updateHabits(data.data.items);
+              } else {
+                  updateInventory(data.data.items);
+              }
           }
       }, 1000);
   };
@@ -773,40 +864,62 @@ export default function Home() {
             {loadingInventory && inventory.length === 0 ? (
                <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
             ) : currentList.length > 0 ? (
-              currentList.map((item) => (
+              currentList.map((item, idx) => {
+                const isHabit = !('id' in item);
+                if (isHabit) {
+                    const habit = item as Habit;
+                    return (
+                        <div key={idx} className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm flex justify-between items-start">
+                            <div className="flex-1">
+                                <div className="font-medium text-gray-900 flex items-center gap-2">
+                                    <ClipboardList className="w-4 h-4 text-blue-500" />
+                                    {habit.name}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">{habit.details}</p>
+                                <div className="text-[10px] text-gray-400 mt-1 flex gap-2">
+                                    <span className="bg-gray-100 px-1.5 rounded">{habit.type}</span>
+                                    <span>{habit.frequency}</span>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+                
+                const invItem = item as InventoryItem;
+                return (
                 <div 
-                  key={item.id} 
-                  onClick={() => openEditModal(item)}
+                  key={invItem.id} 
+                  onClick={() => openEditModal(invItem)}
                   className={`bg-white p-3 rounded-lg border shadow-sm flex justify-between items-center group cursor-pointer transition-colors active:bg-gray-50 ${displayMode === 'search' ? 'border-purple-200 ring-1 ring-purple-100' : 'border-gray-100'}`}
                 >
                   <div className="flex-1">
                     <div className="font-medium text-gray-900 flex items-center gap-2">
-                        {item.name}
+                        {invItem.name}
                         <Edit2 className="w-3 h-3 text-gray-300" />
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {item.category} · {item.location} · 📅 {formatDate(item.expireDate)}
+                      {invItem.category} · {invItem.location} · 📅 {formatDate(invItem.expireDate)}
                     </div>
                   </div>
                   <div className="text-right mr-4">
                     <div className="text-lg font-bold text-gray-800">
-                      {item.quantity} <span className="text-xs font-normal text-gray-500">{item.unit}</span>
+                      {invItem.quantity} <span className="text-xs font-normal text-gray-500">{invItem.unit}</span>
                     </div>
                   </div>
                   <button 
-                    onClick={(e) => deleteItem(item.id, item.name, e)}
-                    disabled={deletingId === item.id}
+                    onClick={(e) => deleteItem(invItem.id, invItem.name, e)}
+                    disabled={deletingId === invItem.id}
                     className="p-3 -mr-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                     title="删除"
                   >
-                    {deletingId === item.id ? (
+                    {deletingId === invItem.id ? (
                         <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
                     ) : (
                         <Trash2 className="w-4 h-4" />
                     )}
                   </button>
                 </div>
-              ))
+              )})
             ) : (
               <div className="text-center py-8 text-gray-400 text-sm">
                   {displayMode === 'search' ? '未找到相关物品' : '暂无库存数据'}
@@ -981,7 +1094,7 @@ export default function Home() {
                           </button>
                           
                           <button
-                              onClick={handleUpdateHabits}
+                              onClick={() => handleManualUpdateHabits()}
                               disabled={isUpdatingHabits || !habitInput.trim()}
                               className="p-3 bg-blue-600 text-white rounded-full flex-none hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                               title="发送更新"
