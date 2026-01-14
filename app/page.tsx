@@ -96,7 +96,12 @@ interface Habit {
 interface UpdateHabitsResponse {
   success: boolean;
   message: string;
-  habits: Habit[];
+  habits?: Habit[];
+  changes?: {
+    type: string;
+    name: string;
+    desc: string;
+  }[];
 }
 
 export default function Home() {
@@ -118,6 +123,7 @@ export default function Home() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<'all' | 'search'>('all');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'habits'>('inventory');
 
   // Inventory State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -135,6 +141,7 @@ export default function Home() {
 
   // Habits State
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [loadingHabits, setLoadingHabits] = useState(false);
   const [showHabitsModal, setShowHabitsModal] = useState(false);
   const [habitInput, setHabitInput] = useState("");
   const [isUpdatingHabits, setIsUpdatingHabits] = useState(false);
@@ -180,6 +187,7 @@ export default function Home() {
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     fetchInventory();
+    fetchHabits();
 
     if (typeof window !== "undefined") {
       const speechRecognitionProvider = window as SpeechRecognitionProvider;
@@ -313,6 +321,7 @@ export default function Home() {
   };
 
   const fetchHabits = async () => {
+      setLoadingHabits(true);
       try {
           const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/getHabits");
           if (!res.ok) throw new Error("Failed to fetch habits");
@@ -320,6 +329,8 @@ export default function Home() {
           setHabits(data);
       } catch (e) {
           console.error("Failed to fetch habits", e);
+      } finally {
+          setLoadingHabits(false);
       }
   };
 
@@ -336,12 +347,24 @@ export default function Home() {
           if (!res.ok) throw new Error("Update habits failed");
           
           const data: UpdateHabitsResponse = await res.json();
-          setHabits(data.habits);
+          const nextHabits = Array.isArray(data.habits) ? data.habits : null;
+          if (nextHabits) {
+              setHabits(nextHabits);
+          }
           setStatus("习惯更新完成");
           
-          if (data.success && data.habits && data.habits.length > 0) {
-              setSearchResults(data.habits);
-              setSearchMessage(`已更新 ${data.habits.length} 项习惯`);
+          if (data.success) {
+              const fallbackHabits: Habit[] = items.map((item) => ({
+                  name: item.name,
+                  type: item.type || "未指定",
+                  details: item.details || "",
+                  frequency: item.frequency || "未指定",
+                  comment: item.comment || "",
+              }));
+              const displayHabits = nextHabits ?? fallbackHabits;
+
+              setSearchResults(displayHabits);
+              setSearchMessage(data.message || `已更新 ${displayHabits.length} 项习惯`);
               setDisplayMode('search');
           }
       } catch (e) {
@@ -370,9 +393,17 @@ export default function Home() {
           const data: UpdateHabitsResponse = await res.json();
           
           if (data.success) {
-              setHabits(data.habits);
+              if (Array.isArray(data.habits)) setHabits(data.habits);
               setHabitMessage(data.message);
               setHabitInput(""); 
+              if (Array.isArray(data.habits)) {
+                  setSearchResults(data.habits);
+                  setSearchMessage(data.message || `已更新 ${data.habits.length} 项习惯`);
+              } else {
+                  setSearchResults([]);
+                  setSearchMessage(data.message || "习惯已更新");
+              }
+              setDisplayMode('search');
           } else {
               setHabitMessage("更新失败: " + data.message);
           }
@@ -404,6 +435,7 @@ export default function Home() {
 
           if (!res.ok) throw new Error("Delete habit failed");
           setHabits(prev => prev.filter(h => h.name !== name));
+          setSearchResults(prev => prev.filter(item => ("id" in item ? true : item.name !== name)));
           setHabitMessage(`已删除 "${name}"`);
       } catch (e) {
           console.error("Failed to delete habit", e);
@@ -437,6 +469,7 @@ export default function Home() {
           const updatedHabit = data.habit;
 
           setHabits(prev => prev.map(h => h.name === editingHabit.old_name ? updatedHabit : h));
+          setSearchResults(prev => prev.map(item => ("id" in item ? item : item.name === editingHabit.old_name ? updatedHabit : item)));
           setEditingHabit(null);
           setHabitMessage(`已更新 "${updatedHabit.name}"`);
       } catch (e) {
@@ -710,9 +743,10 @@ export default function Home() {
           setUpdateResponse(data);
           setStatus("库存更新完成");
           
-          if (data.success && data.items && data.items.length > 0) {
-              setSearchResults(data.items);
-              setSearchMessage(`已更新 ${data.items.length} 项物品`);
+          if (data.success) {
+              const updatedItems = data.items ?? [];
+              setSearchResults(updatedItems);
+              setSearchMessage(data.message || `已更新 ${updatedItems.length} 项物品`);
               setDisplayMode('search');
           }
           
@@ -735,8 +769,11 @@ export default function Home() {
     return dateString;
   };
 
-  // Determine which list to show
-  const currentList = displayMode === 'search' ? searchResults : inventory;
+  const isSearchMode = displayMode === 'search';
+  const showingHabits = !isSearchMode && activeTab === 'habits';
+  const showingInventory = !isSearchMode && activeTab === 'inventory';
+  const currentList = isSearchMode ? searchResults : showingHabits ? habits : inventory;
+  const safeCurrentList = Array.isArray(currentList) ? currentList : [];
 
   return (
     <div className="flex flex-col items-center min-h-screen p-4 pb-20 gap-6 font-[family-name:var(--font-geist-sans)] max-w-lg mx-auto bg-gray-50">
@@ -755,13 +792,6 @@ export default function Home() {
             <p className="text-xs text-gray-500">语音录入 & 库存管理</p>
         </div>
         <div className="flex gap-2">
-            <button 
-                onClick={openHabitsModal}
-                className="w-10 h-10 flex items-center justify-center bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors shadow-sm"
-                title="生活习惯"
-            >
-                <ClipboardList className="w-6 h-6" />
-            </button>
             <button 
                 onClick={fetchMealPlan}
                 className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors shadow-sm"
@@ -894,12 +924,12 @@ export default function Home() {
         <section className="w-full space-y-3">
           <div className="flex justify-between items-center px-1">
             <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Package className="w-5 h-5" /> 
-              {displayMode === 'search' ? '查询结果' : '当前库存'}
+              {showingHabits ? <ClipboardList className="w-5 h-5" /> : <Package className="w-5 h-5" />}
+              {isSearchMode ? '查询结果' : showingHabits ? '生活习惯' : '当前库存'}
             </h2>
             
             <div className="flex items-center gap-2">
-                {displayMode === 'search' && (
+                {isSearchMode && (
                     <button 
                         onClick={() => {
                             setDisplayMode('all');
@@ -912,14 +942,29 @@ export default function Home() {
                     </button>
                 )}
                 
-                <button 
-                  onClick={fetchInventory} 
-                  disabled={loadingInventory}
-                  className="p-2 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
-                  title="刷新库存"
-                >
-                  <RefreshCw className={`w-4 h-4 text-gray-600 ${loadingInventory ? 'animate-spin' : ''}`} />
-                </button>
+                {showingInventory && !isSearchMode && (
+                  <button 
+                    onClick={fetchInventory} 
+                    disabled={loadingInventory}
+                    className="p-2 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
+                    title="刷新库存"
+                  >
+                    <RefreshCw className={`w-4 h-4 text-gray-600 ${loadingInventory ? 'animate-spin' : ''}`} />
+                  </button>
+                )}
+
+                {showingHabits && !isSearchMode && (
+                  <>
+                    <button
+                      onClick={fetchHabits}
+                      disabled={loadingHabits}
+                      className="p-2 hover:bg-gray-200 rounded-full transition-colors disabled:opacity-50"
+                      title="刷新习惯"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-gray-600 ${loadingHabits ? 'animate-spin' : ''}`} />
+                    </button>
+                  </>
+                )}
             </div>
           </div>
 
@@ -929,20 +974,58 @@ export default function Home() {
               </div>
           )}
 
+          {showingHabits && habitMessage && (
+              <div className={`text-xs p-2 rounded ${habitMessage.includes('失败') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                  {habitMessage}
+              </div>
+          )}
+
+          {!isSearchMode && (
+            <div className="flex items-center gap-2 px-1">
+              <button
+                onClick={() => setActiveTab('inventory')}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                  activeTab === 'inventory'
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                库存
+              </button>
+              <button
+                onClick={() => setActiveTab('habits')}
+                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                  activeTab === 'habits'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                生活习惯
+              </button>
+            </div>
+          )}
+
           <div className="grid gap-3">
-            {loadingInventory && inventory.length === 0 ? (
+            {showingInventory && loadingInventory && inventory.length === 0 ? (
                <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
-            ) : currentList.length > 0 ? (
-              currentList.map((item, idx) => {
+            ) : showingHabits && loadingHabits && habits.length === 0 ? (
+               <div className="text-center py-8 text-gray-400 text-sm">加载中...</div>
+            ) : safeCurrentList.length > 0 ? (
+              safeCurrentList.map((item, idx) => {
                 const isHabit = !('id' in item);
                 if (isHabit) {
                     const habit = item as Habit;
                     return (
-                        <div key={idx} className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm flex justify-between items-start">
+                        <div
+                            key={idx}
+                            onClick={() => openHabitEditModal(habit)}
+                            className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm flex justify-between items-start group cursor-pointer transition-colors active:bg-blue-50"
+                        >
                             <div className="flex-1">
                                 <div className="font-medium text-gray-900 flex items-center gap-2">
                                     <ClipboardList className="w-4 h-4 text-blue-500" />
                                     {habit.name}
+                                    <Edit2 className="w-3 h-3 text-gray-300" />
                                 </div>
                                 <p className="text-xs text-gray-500 mt-1">{habit.details}</p>
                                 <div className="text-[10px] text-gray-400 mt-1 flex gap-2">
@@ -950,6 +1033,18 @@ export default function Home() {
                                     <span>{habit.frequency}</span>
                                 </div>
                             </div>
+                            <button
+                                onClick={(e) => deleteHabit(habit.name, e)}
+                                disabled={deletingHabitName === habit.name}
+                                className="p-2 -mr-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                title="删除"
+                            >
+                                {deletingHabitName === habit.name ? (
+                                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                )}
+                            </button>
                         </div>
                     );
                 }
@@ -991,7 +1086,7 @@ export default function Home() {
               )})
             ) : (
               <div className="text-center py-8 text-gray-400 text-sm">
-                  {displayMode === 'search' ? '未找到相关物品' : '暂无库存数据'}
+                  {isSearchMode ? '未找到相关物品' : showingHabits ? '暂无习惯数据' : '暂无库存数据'}
               </div>
             )}
           </div>
