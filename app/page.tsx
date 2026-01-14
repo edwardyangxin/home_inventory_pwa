@@ -3,7 +3,31 @@
 import { useEffect, useState, useRef } from "react";
 import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList } from "lucide-react";
 
-type SpeechRecognitionConstructor = new () => SpeechRecognition;
+type SpeechRecognitionErrorEventLike = {
+  error: string;
+};
+
+type SpeechRecognitionResultLike = {
+  0?: { transcript?: string };
+};
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
 type SpeechRecognitionProvider = Window & {
   SpeechRecognition?: SpeechRecognitionConstructor;
@@ -153,7 +177,7 @@ export default function Home() {
   const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
   const [language, setLanguage] = useState<string>('zh-CN');
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef(""); 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -240,7 +264,7 @@ export default function Home() {
         }
       };
 
-      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         console.error("Speech Error:", event.error);
         if (event.error === 'no-speech') {
             setStatus("未检测到语音");
@@ -249,7 +273,7 @@ export default function Home() {
         }
       };
 
-      recognition.onresult = (event: SpeechRecognitionEvent) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         const currentFullTranscript = Array.from(event.results)
           .map((result) => result[0]?.transcript ?? "")
           .join("");
