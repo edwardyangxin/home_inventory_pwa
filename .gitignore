@@ -17,6 +17,11 @@
 /.next/
 /out/
 
+# PWA build artifacts
+/public/sw.js
+/public/workbox-*.js
+/public/swe-worker-*.js
+
 # production
 /build
 
