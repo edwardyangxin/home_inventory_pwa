@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, ShoppingCart } from "lucide-react";
 
 type SpeechRecognitionErrorEventLike = {
   error: string;
@@ -109,6 +109,23 @@ interface MealPlanResponse {
   summary: string;
 }
 
+interface WeeklyPurchaseSuggestion {
+  name: string;
+  suggested_quantity: number;
+  unit: string;
+  reason: string;
+  current_stock: {
+    quantity: number;
+    unit: string;
+  };
+  last_purchase_at: string | null;
+}
+
+interface WeeklyPurchaseResponse {
+  success: boolean;
+  suggestions: WeeklyPurchaseSuggestion[];
+}
+
 interface Habit {
   name: string;
   type: string;
@@ -162,6 +179,11 @@ export default function Home() {
   const [mealPlan, setMealPlan] = useState<MealPlanResponse | null>(null);
   const [isFetchingMealPlan, setIsFetchingMealPlan] = useState(false);
   const [showMealModal, setShowMealModal] = useState(false);
+
+  // Weekly Purchase State
+  const [weeklyPurchase, setWeeklyPurchase] = useState<WeeklyPurchaseResponse | null>(null);
+  const [isFetchingWeeklyPurchase, setIsFetchingWeeklyPurchase] = useState(false);
+  const [showWeeklyPurchaseModal, setShowWeeklyPurchaseModal] = useState(false);
 
   // Habits State
   const [habits, setHabits] = useState<Habit[]>([]);
@@ -341,6 +363,23 @@ export default function Home() {
           setShowMealModal(false); // Close if error
       } finally {
           setIsFetchingMealPlan(false);
+      }
+  };
+
+  const fetchWeeklyPurchase = async () => {
+      setIsFetchingWeeklyPurchase(true);
+      setShowWeeklyPurchaseModal(true); // Open modal immediately to show loading state
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/recommendWeeklyPurchase");
+          if (!res.ok) throw new Error("Failed to fetch weekly purchase");
+          const data: WeeklyPurchaseResponse = await res.json();
+          setWeeklyPurchase(data);
+      } catch (e) {
+          console.error("Weekly purchase error", e);
+          alert("无法获取本周采购推荐，请稍后再试");
+          setShowWeeklyPurchaseModal(false);
+      } finally {
+          setIsFetchingWeeklyPurchase(false);
       }
   };
 
@@ -793,6 +832,11 @@ export default function Home() {
     return dateString;
   };
 
+  const formatLastPurchase = (dateString: string | null | undefined) => {
+    if (!dateString) return "未知";
+    return formatDate(dateString);
+  };
+
   const isSearchMode = displayMode === 'search';
   const showingHabits = !isSearchMode && activeTab === 'habits';
   const showingInventory = !isSearchMode && activeTab === 'inventory';
@@ -817,6 +861,13 @@ export default function Home() {
         </div>
         <div className="flex gap-2">
             <button 
+                onClick={fetchWeeklyPurchase}
+                className="w-10 h-10 flex items-center justify-center bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors shadow-sm"
+                title="本周采购"
+            >
+                <ShoppingCart className="w-5 h-5" />
+            </button>
+            <button 
                 onClick={fetchMealPlan}
                 className="w-10 h-10 flex items-center justify-center bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors shadow-sm"
                 title="饮食推荐"
@@ -830,7 +881,7 @@ export default function Home() {
         {/* Status Display */}
         <div className={`text-center py-2 px-4 rounded-full text-xs font-medium transition-colors ${
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
-            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan || isFetchingWeeklyPurchase ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
         }`}>
             {status}
         </div>
@@ -1458,6 +1509,67 @@ export default function Home() {
                 <div className="pt-2 border-t">
                     <button 
                         onClick={() => setShowMealModal(false)}
+                        className="w-full py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        关闭
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Weekly Purchase Modal */}
+      {showWeeklyPurchaseModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10 max-h-[90vh] overflow-hidden">
+                <div className="flex justify-between items-center border-b pb-3">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <ShoppingCart className="w-5 h-5 text-green-600" />
+                        本周采购推荐
+                    </h3>
+                    <button onClick={() => setShowWeeklyPurchaseModal(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                        <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    {isFetchingWeeklyPurchase ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-gray-500 space-y-3">
+                            <RefreshCw className="w-8 h-8 animate-spin text-green-500" />
+                            <p>正在生成本周采购清单...</p>
+                        </div>
+                    ) : weeklyPurchase?.suggestions?.length ? (
+                        <div className="space-y-3">
+                            {weeklyPurchase.suggestions.map((item, idx) => (
+                                <div key={`${item.name}-${idx}`} className="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow bg-white">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h4 className="font-bold text-gray-900 mb-1">{item.name}</h4>
+                                            <p className="text-xs text-green-700 bg-green-50 inline-block px-2 py-0.5 rounded">
+                                                建议购买 {item.suggested_quantity}{item.unit}
+                                            </p>
+                                        </div>
+                                        <div className="text-right text-[11px] text-gray-500">
+                                            <div>当前库存: {item.current_stock?.quantity ?? 0}{item.current_stock?.unit ?? ""}</div>
+                                            <div>最近购买: {formatLastPurchase(item.last_purchase_at)}</div>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-600 mt-3 leading-relaxed">
+                                        {item.reason}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-gray-400">
+                            暂无推荐数据
+                        </div>
+                    )}
+                </div>
+
+                <div className="pt-2 border-t">
+                    <button 
+                        onClick={() => setShowWeeklyPurchaseModal(false)}
                         className="w-full py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
                     >
                         关闭

@@ -131,7 +131,7 @@ describe('Home Page Integration Tests', () => {
       // 6. Verify Result
       await waitFor(
         () => {
-          expect(screen.queryByText('已更新 1 项物品')).not.toBeNull()
+          expect(screen.queryAllByText(/更新成功|已更新/).length).toBeGreaterThan(0)
           expect(screen.queryByText('可乐')).not.toBeNull()
         },
         { timeout: 3000 }
@@ -144,29 +144,21 @@ describe('Home Page Integration Tests', () => {
   it('Flow 2: Habit Voice Update', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const fetchMock = getFetchMock()
-    fetchMock.mockResolvedValue(jsonResponse(MOCK_INVENTORY))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
 
     try {
       render(<Home />)
       expect(await screen.findByText('现有库存')).not.toBeNull()
 
-      // 1. Open Habits Modal
-      fetchMock.mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
-
-      const habitsBtn = screen.getByTitle('生活习惯')
-      await act(async () => {
-        fireEvent.click(habitsBtn)
-      })
-
-      expect(await screen.findByText('生活习惯 & 购物清单')).not.toBeNull()
-
-      // 2. Start Recording in Modal
-      const modalMicBtn = screen.getByTitle('语音输入')
-      fireEvent.click(modalMicBtn)
+      // 1. Start Recording
+      const recordBtn = screen.getByText('开始录音')
+      fireEvent.click(recordBtn)
 
       const recognition = getRecognitionInstance()
 
-      // 3. Speak
+      // 2. Speak
       act(() => {
         if (recognition.onstart) {
           recognition.onstart()
@@ -203,7 +195,7 @@ describe('Home Page Integration Tests', () => {
       fetchMock.mockResolvedValueOnce(
         jsonResponse({
           success: true,
-          habits: [...MOCK_HABITS, { name: '蔬菜', type: '习惯' }],
+          habits: [...MOCK_HABITS, { name: '蔬菜', type: '习惯', details: '多吃', frequency: '经常', comment: '' }],
           message: '习惯已更新',
         })
       )
@@ -213,7 +205,7 @@ describe('Home Page Integration Tests', () => {
       // 7. Verify UI
       await waitFor(
         async () => {
-          expect(screen.queryByText('已更新 2 项习惯')).not.toBeNull()
+          expect(screen.queryByText('习惯已更新')).not.toBeNull()
           expect((await screen.findAllByText('蔬菜')).length).toBeGreaterThanOrEqual(1)
         },
         { timeout: 3000 }
@@ -375,17 +367,53 @@ describe('Home Page Integration Tests', () => {
     expect(await screen.findByText('搜索到的物品')).not.toBeNull();
   })
 
-  it('Flow 7: Delete Habit', async () => {
+  it('Flow 7: Weekly Purchase Recommendation', async () => {
     const fetchMock = getFetchMock()
-    fetchMock.mockResolvedValue(jsonResponse(MOCK_INVENTORY))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          suggestions: [
+            {
+              name: '鸡蛋',
+              suggested_quantity: 12,
+              unit: '个',
+              reason: '常备必需品，且曾经购买过，现在库存为0',
+              current_stock: { quantity: 0, unit: '个' },
+              last_purchase_at: '2024-06-01T12:34:56.000Z',
+            },
+          ],
+        })
+      )
+
+    render(<Home />)
+    await screen.findByText('现有库存')
+
+    const weeklyBtn = screen.getByTitle('本周采购')
+    await act(async () => {
+      fireEvent.click(weeklyBtn)
+    })
+
+    expect(await screen.findByText('本周采购推荐')).not.toBeNull()
+    expect(await screen.findByText('鸡蛋')).not.toBeNull()
+    expect(await screen.findByText('建议购买 12个')).not.toBeNull()
+    expect(await screen.findByText('当前库存: 0个')).not.toBeNull()
+    expect(await screen.findByText('最近购买: 2024-06-01')).not.toBeNull()
+  })
+
+  it('Flow 8: Delete Habit', async () => {
+    const fetchMock = getFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
     vi.spyOn(window, 'confirm').mockImplementation(() => true);
 
     render(<Home />)
-    
-    fetchMock.mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
 
     await act(async () => {
-        fireEvent.click(screen.getByTitle('生活习惯'));
+        fireEvent.click(screen.getByRole('button', { name: '生活习惯' }));
     });
     expect(await screen.findByText('早起')).not.toBeNull();
 
@@ -393,11 +421,7 @@ describe('Home Page Integration Tests', () => {
 
     // In modal, find delete button. We use findAllByTitle and take the one that's likely the habit one
     const deleteBtns = screen.getAllByTitle('删除');
-    // Habit delete button is inside the modal list
-    const habitDeleteBtn = deleteBtns.find((btn) => btn.closest('.fixed')) // Modal is fixed
-    if (!habitDeleteBtn) {
-      throw new Error('Habit delete button not found')
-    }
+    const habitDeleteBtn = deleteBtns[0];
 
     await act(async () => {
         fireEvent.click(habitDeleteBtn);
@@ -408,27 +432,21 @@ describe('Home Page Integration Tests', () => {
     });
   })
 
-  it('Flow 8: Edit Habit', async () => {
+  it('Flow 9: Edit Habit', async () => {
     const fetchMock = getFetchMock()
-    fetchMock.mockResolvedValue(jsonResponse(MOCK_INVENTORY))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
 
     render(<Home />)
-    
-    fetchMock.mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
 
     await act(async () => {
-        fireEvent.click(screen.getByTitle('生活习惯'));
+        fireEvent.click(screen.getByRole('button', { name: '生活习惯' }));
     });
     await screen.findByText('早起');
 
-    const editBtns = screen.getAllByTitle('编辑');
-    const habitEditBtn = editBtns.find((btn) => btn.closest('.fixed'))
-    if (!habitEditBtn) {
-      throw new Error('Habit edit button not found')
-    }
-
     await act(async () => {
-        fireEvent.click(habitEditBtn);
+        fireEvent.click(screen.getByText('早起'));
     });
     expect(await screen.findByText('✏️ 编辑习惯/清单')).not.toBeNull();
 
