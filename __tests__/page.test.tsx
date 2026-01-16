@@ -503,4 +503,62 @@ describe('Home Page Integration Tests', () => {
     expect(await screen.findByText('语音识别结果不稳定')).not.toBeNull()
     expect(await screen.findByText('Count: 2')).not.toBeNull()
   })
+
+  it('Flow 11: Receipt Upload Auto Update', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const fetchMock = getFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          changes: [
+            { type: 'ADD', name: '华夫饼', desc: '新增物品: 1 盒', expire_date: null },
+          ],
+          items: [
+            {
+              id: '2',
+              name: '华夫饼',
+              quantity: 1,
+              unit: '盒',
+              category: '冷冻',
+              location: '冰箱',
+              expireDate: null,
+              status: 'normal',
+              comment: '',
+            },
+          ],
+          receipt_items: [
+            { name: 'Eggo 华夫饼', quantity: 1, unit: '盒', action: 'ADD', comment: '' },
+          ],
+          message: '处理完成',
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse([...MOCK_INVENTORY, { id: '2', name: '华夫饼', quantity: 1, unit: '盒' }]))
+
+    try {
+      render(<Home />)
+      await screen.findByText('现有库存')
+
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' })
+
+      await act(async () => {
+        fireEvent.change(fileInput, { target: { files: [file] } })
+      })
+
+      expect(await screen.findByText('小票识别')).not.toBeNull()
+      expect(await screen.findByText('Eggo 华夫饼')).not.toBeNull()
+      expect(await screen.findByText(/自动更新/)).not.toBeNull()
+
+      await runCountdown()
+
+      await waitFor(() => {
+        expect(screen.queryAllByText(/处理完成|已更新/).length).toBeGreaterThan(0)
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

@@ -92,6 +92,7 @@
 
 ## 4. 🔍 库存查询 (Search Inventory)
 当 `/processVoiceInput` 返回 `target: "INVENTORY"` 且 `action: "QUERY"` 时调用。
+支持模糊匹配（名称与 comment），可命中包含品牌英文或别名的条目。
 
 - **Endpoint:** `/searchInventory`
 - **Method:** `POST`
@@ -194,7 +195,8 @@
       "quantity": 2,
       "unit": "包",
       "expire_date": "2026-07-09",
-      "action": "ADD"
+      "action": "ADD",
+      "comment": "可选备注"
     }
   ]
 }
@@ -221,7 +223,77 @@
       "quantity": 4,
       "unit": "包",
       "expireDate": "2026-07-09",
-      "status": "normal"
+      "status": "normal",
+      "comment": ""
+    }
+  ],
+  "message": "处理完成。"
+}
+```
+
+---
+
+## 5b. 🧾 小票识别入库 (Ingest Receipt)
+上传超市小票图片，识别条目并自动写入库存。默认使用 Gemini 进行 OCR + 结构化抽取，并将英文商品名翻译为中文。
+
+- **Endpoint:** `/ingestReceipt`
+- **Method:** `POST`
+- **Content-Type:** `multipart/form-data` 或 `application/json`
+- **OCR 配置:** 使用 `OCR_LLM_PROVIDER`/`OCR_MODEL`/`OCR_KEY` 环境变量（默认 Gemini）
+
+### Request Body (推荐: multipart)
+字段 `image` 为图片文件：
+```
+image=<receipt-image-file>
+```
+
+### Request Body (可选: JSON)
+```json
+{
+  "image_base64": "data:image/jpeg;base64,..."
+}
+```
+
+或：
+```json
+{
+  "image_url": "https://example.com/receipt.jpg"
+}
+```
+
+### Response Example
+与 `/updateInventory` 响应一致，并额外回传 `receipt_items`：
+```json
+{
+  "success": true,
+  "changes": [
+    {
+      "type": "ADD",
+      "name": "牛奶",
+      "desc": "新增物品: 2 盒 [待分类 @ 未指定]",
+      "expire_date": null
+    }
+  ],
+  "items": [
+    {
+      "id": "dc694976-e67f-40fb-860d-28efaf6fa119",
+      "name": "牛奶",
+      "category": "待分类",
+      "location": "未指定",
+      "quantity": 2,
+      "unit": "盒",
+      "expireDate": null,
+      "status": "normal",
+      "comment": ""
+    }
+  ],
+  "receipt_items": [
+    {
+      "name": "牛奶",
+      "quantity": 2,
+      "unit": "盒",
+      "action": "ADD",
+      "comment": ""
     }
   ],
   "message": "处理完成。"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, ShoppingCart, Bug } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, ShoppingCart, Bug, Upload } from "lucide-react";
 
 type SpeechRecognitionErrorEventLike = {
   error: string;
@@ -43,6 +43,14 @@ type ProcessedItem = {
   type?: string;
   details?: string;
   frequency?: string;
+  comment?: string;
+};
+
+type ReceiptItem = {
+  name: string;
+  quantity?: number;
+  unit?: string;
+  action?: string;
   comment?: string;
 };
 
@@ -97,6 +105,10 @@ interface UpdateInventoryResponse {
   }[];
   items?: InventoryItem[];
   message: string;
+}
+
+interface IngestReceiptResponse extends UpdateInventoryResponse {
+  receipt_items?: ReceiptItem[];
 }
 
 interface MealPlanResponse {
@@ -183,6 +195,12 @@ export default function Home() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [updateResponse, setUpdateResponse] = useState<UpdateInventoryResponse | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Receipt Upload State
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
+  const [receiptResponse, setReceiptResponse] = useState<IngestReceiptResponse | null>(null);
+  const [receiptPreviewItems, setReceiptPreviewItems] = useState<ReceiptItem[]>([]);
+  const [receiptCountdown, setReceiptCountdown] = useState<number | null>(null);
   
   // Search Results State
   const [searchResults, setSearchResults] = useState<(InventoryItem | Habit)[]>([]);
@@ -236,7 +254,9 @@ export default function Home() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef(""); 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const receiptCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingModeRef = useRef<'main' | 'habit' | 'suggestion'>('main');
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     recordingModeRef.current = recordingMode;
@@ -363,6 +383,7 @@ export default function Home() {
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         if (recognitionRef.current) recognitionRef.current.stop();
         if (countdownRef.current) clearInterval(countdownRef.current);
+        if (receiptCountdownRef.current) clearInterval(receiptCountdownRef.current);
     }
   }, []);
   /* eslint-enable react-hooks/exhaustive-deps */
@@ -371,9 +392,13 @@ export default function Home() {
       setApiResponse(null);
       setUpdateResponse(null);
       setCountdown(null);
+      setReceiptResponse(null);
+      setReceiptPreviewItems([]);
+      setReceiptCountdown(null);
       setSearchResults([]); 
       setSearchMessage(null);
       if (countdownRef.current) clearInterval(countdownRef.current);
+      if (receiptCountdownRef.current) clearInterval(receiptCountdownRef.current);
       setDisplayMode('all');
   };
 
@@ -903,6 +928,76 @@ export default function Home() {
       setStatus("已取消自动更新，请编辑");
   };
 
+  const startReceiptUpdateTimer = (data: IngestReceiptResponse) => {
+      setReceiptCountdown(5);
+      if (receiptCountdownRef.current) clearInterval(receiptCountdownRef.current);
+
+      let timeLeft = 5;
+      receiptCountdownRef.current = setInterval(() => {
+          timeLeft -= 1;
+          setReceiptCountdown(timeLeft);
+
+          if (timeLeft <= 0) {
+              if (receiptCountdownRef.current) clearInterval(receiptCountdownRef.current);
+              setReceiptCountdown(null);
+              setUpdateResponse(data);
+
+              if (data.success) {
+                  const updatedItems = data.items ?? [];
+                  setSearchResults(updatedItems);
+                  setSearchMessage(data.message || `已更新 ${updatedItems.length} 项物品`);
+                  setDisplayMode('search');
+              }
+
+              fetchInventory();
+          }
+      }, 1000);
+  };
+
+  const cancelReceiptAutoUpdate = () => {
+      if (receiptCountdownRef.current) clearInterval(receiptCountdownRef.current);
+      setReceiptCountdown(null);
+      setStatus("已取消自动刷新，可手动编辑或刷新库存");
+  };
+
+  const handleReceiptUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      resetFlowState();
+      setError(null);
+      setIsUploadingReceipt(true);
+      setStatus("正在识别小票...");
+
+      try {
+          const formData = new FormData();
+          formData.append("image", file);
+
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/ingestReceipt", {
+              method: "POST",
+              body: formData,
+          });
+
+          if (!res.ok) throw new Error("Receipt ingest failed");
+
+          const data: IngestReceiptResponse = await res.json();
+          setReceiptResponse(data);
+          setReceiptPreviewItems(Array.isArray(data.receipt_items) ? data.receipt_items : []);
+          setStatus(data.success ? "小票识别完成" : "小票识别失败");
+
+          if (data.success) {
+              startReceiptUpdateTimer(data);
+          }
+      } catch (e) {
+          console.error("Receipt ingest error", e);
+          setError("小票识别失败");
+          setStatus("识别失败");
+      } finally {
+          setIsUploadingReceipt(false);
+          if (receiptInputRef.current) receiptInputRef.current.value = "";
+      }
+  };
+
   const updateInventory = async (items: ProcessedItem[]) => {
       setStatus("正在更新库存...");
       setIsUpdating(true);
@@ -1014,7 +1109,7 @@ export default function Home() {
         {/* Status Display */}
         <div className={`text-center py-2 px-4 rounded-full text-xs font-medium transition-colors ${
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
-            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan || isFetchingWeeklyPurchase || isUpdatingSuggestions || loadingSuggestions ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan || isFetchingWeeklyPurchase || isUpdatingSuggestions || loadingSuggestions || isUploadingReceipt ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
         }`}>
             {status}
         </div>
@@ -1029,7 +1124,31 @@ export default function Home() {
                 disabled={isProcessing || isUpdating}
             />
             
-            <div className="flex justify-end items-center gap-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <input
+                        ref={receiptInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleReceiptUpload}
+                        className="hidden"
+                    />
+                    <button
+                        onClick={() => receiptInputRef.current?.click()}
+                        disabled={isProcessing || isUpdating || isUploadingReceipt || isRecording}
+                        className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="上传小票"
+                    >
+                        <Upload className="w-3.5 h-3.5" />
+                        上传小票
+                    </button>
+                    {isUploadingReceipt && (
+                        <span className="text-xs text-blue-600 flex items-center gap-1">
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            识别中...
+                        </span>
+                    )}
+                </div>
                 {transcript.length > 0 && !isRecording && !isProcessing && (
                     <button 
                         onClick={() => processText(transcript)}
@@ -1070,6 +1189,54 @@ export default function Home() {
                             className="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition-colors"
                         >
                             取消并编辑
+                        </button>
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Receipt Preview & Countdown */}
+        {receiptResponse && (
+            <div className={`border rounded-lg p-3 animate-in fade-in slide-in-from-bottom-2 ${receiptResponse.success ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${receiptResponse.success ? 'bg-amber-200 text-amber-800' : 'bg-red-200 text-red-800'}`}>
+                            {receiptResponse.success ? 'Receipt' : 'Error'}
+                        </span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                            小票识别
+                        </h3>
+                    </div>
+                </div>
+                <p className="text-amber-900 text-sm leading-relaxed mb-3">
+                    {receiptResponse.message}
+                </p>
+
+                {receiptPreviewItems.length > 0 ? (
+                    <ul className="space-y-1">
+                        {receiptPreviewItems.map((item, idx) => (
+                            <li key={`${item.name}-${idx}`} className="text-xs text-amber-800 bg-white/70 p-2 rounded flex justify-between gap-2">
+                                <span className="font-medium">{item.name}</span>
+                                <span>
+                                    {item.quantity ?? "-"} {item.unit ?? ""}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="text-xs text-amber-700">未识别到条目</div>
+                )}
+
+                {receiptCountdown !== null && (
+                    <div className="flex items-center justify-between bg-white/70 p-2 rounded border border-amber-100 mt-3">
+                        <span className="text-xs text-amber-800 font-medium animate-pulse">
+                            自动更新: {receiptCountdown}s...
+                        </span>
+                        <button 
+                            onClick={cancelReceiptAutoUpdate}
+                            className="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 transition-colors"
+                        >
+                            取消自动刷新
                         </button>
                     </div>
                 )}
