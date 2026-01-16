@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, ShoppingCart } from "lucide-react";
+import { Mic, Square, RefreshCw, Package, Trash2, X, Check, Edit2, ArrowLeft, Send, ChefHat, ClipboardList, ShoppingCart, Bug } from "lucide-react";
 
 type SpeechRecognitionErrorEventLike = {
   error: string;
@@ -145,6 +145,31 @@ interface UpdateHabitsResponse {
   }[];
 }
 
+interface SuggestionItem {
+  id: string;
+  title: string;
+  category: string;
+  details: string;
+  status: string;
+  count: number;
+  source_text: string;
+  merged_from: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface UpdateSuggestionsResponse {
+  success: boolean;
+  message: string;
+  changes?: {
+    type: string;
+    title: string;
+    category: string;
+    desc: string;
+  }[];
+  suggestions?: SuggestionItem[];
+}
+
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -196,14 +221,22 @@ export default function Home() {
   const [editingHabit, setEditingHabit] = useState<(Habit & { old_name?: string }) | null>(null);
   const [isSavingHabitEdit, setIsSavingHabitEdit] = useState(false);
 
-  const [recordingMode, setRecordingMode] = useState<'main' | 'habit'>('main');
+  // Suggestions State
+  const [suggestions, setSuggestions] = useState<SuggestionItem[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
+  const [suggestionInput, setSuggestionInput] = useState("");
+  const [isUpdatingSuggestions, setIsUpdatingSuggestions] = useState(false);
+  const [suggestionMessage, setSuggestionMessage] = useState<string | null>(null);
+
+  const [recordingMode, setRecordingMode] = useState<'main' | 'habit' | 'suggestion'>('main');
   const [language, setLanguage] = useState<string>('zh-CN');
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transcriptRef = useRef(""); 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const recordingModeRef = useRef<'main' | 'habit'>('main');
+  const recordingModeRef = useRef<'main' | 'habit' | 'suggestion'>('main');
 
   useEffect(() => {
     recordingModeRef.current = recordingMode;
@@ -260,9 +293,12 @@ export default function Home() {
         if (recordingModeRef.current === 'main') {
             resetFlowState();
             setTranscript("");
-        } else {
+        } else if (recordingModeRef.current === 'habit') {
              // For habit mode, clear input
              setHabitInput("");
+        } else {
+             // For suggestion mode, clear input
+             setSuggestionInput("");
         }
 
         transcriptRef.current = ""; 
@@ -280,7 +316,11 @@ export default function Home() {
         const finalText = transcriptRef.current;
         
         if (finalText && finalText.trim().length > 0) {
-             processText(finalText);
+             if (recordingModeRef.current === 'suggestion') {
+                 submitSuggestionText(finalText);
+             } else {
+                 processText(finalText);
+             }
         } else {
              setStatus("录音结束 (无内容)");
         }
@@ -304,8 +344,10 @@ export default function Home() {
 
         if (recordingModeRef.current === 'main') {
             setTranscript(currentFullTranscript);
-        } else {
+        } else if (recordingModeRef.current === 'habit') {
             setHabitInput(currentFullTranscript);
+        } else {
+            setSuggestionInput(currentFullTranscript);
         }
 
         if (currentFullTranscript.toLowerCase().includes("over")) {
@@ -397,6 +439,20 @@ export default function Home() {
       }
   };
 
+  const fetchSuggestions = async () => {
+      setLoadingSuggestions(true);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/getSuggestions");
+          if (!res.ok) throw new Error("Failed to fetch suggestions");
+          const data: SuggestionItem[] = await res.json();
+          setSuggestions(Array.isArray(data) ? data : []);
+      } catch (e) {
+          console.error("Failed to fetch suggestions", e);
+      } finally {
+          setLoadingSuggestions(false);
+      }
+  };
+
   const updateHabits = async (items: ProcessedItem[]) => {
       setStatus("正在更新习惯...");
       setIsUpdating(true);
@@ -439,6 +495,49 @@ export default function Home() {
       }
   };
 
+  const submitSuggestionText = async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      setStatus("正在提交建议...");
+      setIsUpdatingSuggestions(true);
+      setSuggestionMessage(null);
+
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/updateSuggestions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: trimmed }),
+          });
+
+          if (!res.ok) throw new Error("Update suggestions failed");
+          const data: UpdateSuggestionsResponse = await res.json();
+
+          if (data.success) {
+              if (Array.isArray(data.suggestions)) {
+                  setSuggestions(data.suggestions);
+              }
+              setSuggestionMessage(data.message || "建议已更新");
+              setStatus("建议已更新");
+              setSuggestionInput("");
+          } else {
+              setSuggestionMessage(`更新失败: ${data.message}`);
+              setStatus("更新失败");
+          }
+      } catch (e) {
+          console.error("Error updating suggestions", e);
+          setSuggestionMessage("更新发生错误");
+          setStatus("更新失败");
+      } finally {
+          setIsUpdatingSuggestions(false);
+      }
+  };
+
+  const handleManualUpdateSuggestions = async () => {
+      if (!suggestionInput.trim()) return;
+      await submitSuggestionText(suggestionInput);
+  };
+
   const handleManualUpdateHabits = async () => {
       if (!habitInput.trim()) return;
       setIsUpdatingHabits(true);
@@ -476,6 +575,20 @@ export default function Home() {
       } finally {
           setIsUpdatingHabits(false);
       }
+  };
+
+  const openSuggestionsModal = () => {
+      fetchSuggestions();
+      setShowSuggestionsModal(true);
+      setRecordingMode('suggestion');
+      setSuggestionMessage(null);
+  };
+
+  const closeSuggestionsModal = () => {
+      setShowSuggestionsModal(false);
+      setRecordingMode('main');
+      setSuggestionMessage(null);
+      if (isRecording) stopRecording("Modal closed");
   };
 
   const openHabitsModal = () => {
@@ -837,6 +950,19 @@ export default function Home() {
     return formatDate(dateString);
   };
 
+  const suggestionCategoryStyles: Record<string, string> = {
+    bug: "bg-red-100 text-red-700",
+    feature: "bg-blue-100 text-blue-700",
+    improvement: "bg-green-100 text-green-700",
+    ux: "bg-pink-100 text-pink-700",
+    performance: "bg-yellow-100 text-yellow-700",
+    data: "bg-indigo-100 text-indigo-700",
+    other: "bg-gray-100 text-gray-600",
+  };
+
+  const getSuggestionCategoryClass = (category: string) =>
+    suggestionCategoryStyles[category] ?? suggestionCategoryStyles.other;
+
   const isSearchMode = displayMode === 'search';
   const showingHabits = !isSearchMode && activeTab === 'habits';
   const showingInventory = !isSearchMode && activeTab === 'inventory';
@@ -846,7 +972,14 @@ export default function Home() {
   return (
     <div className="flex flex-col items-center min-h-screen p-4 pb-20 gap-6 font-[family-name:var(--font-geist-sans)] max-w-lg mx-auto bg-gray-50">
       <header className="w-full flex items-center justify-between mt-4">
-        <div className="w-10">
+        <div className="flex items-center gap-2">
+            <button 
+                onClick={openSuggestionsModal}
+                className="w-10 h-10 flex items-center justify-center bg-yellow-100 text-yellow-700 rounded-full hover:bg-yellow-200 transition-colors shadow-sm"
+                title="Suggestions"
+            >
+                <Bug className="w-5 h-5" />
+            </button>
             <button 
                 onClick={toggleLanguage}
                 className="w-10 h-10 flex items-center justify-center bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm text-xs font-bold"
@@ -881,7 +1014,7 @@ export default function Home() {
         {/* Status Display */}
         <div className={`text-center py-2 px-4 rounded-full text-xs font-medium transition-colors ${
             isRecording ? "bg-red-100 text-red-600 animate-pulse border border-red-200" : 
-            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan || isFetchingWeeklyPurchase ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
+            isProcessing || isUpdating || isSearching || isSavingEdit || isFetchingMealPlan || isFetchingWeeklyPurchase || isUpdatingSuggestions || loadingSuggestions ? "bg-blue-100 text-blue-600 border border-blue-200" : "bg-white text-gray-600 border border-gray-200 shadow-sm"
         }`}>
             {status}
         </div>
@@ -1359,6 +1492,91 @@ export default function Home() {
                 </div>
             </div>
         </div>
+      )}
+
+      {/* Suggestions Modal */}
+      {showSuggestionsModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-bottom-10 max-h-[90vh] overflow-hidden">
+                  <div className="flex justify-between items-center border-b pb-3">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                          <Bug className="w-5 h-5 text-yellow-500" />
+                          Suggestions 清单
+                      </h3>
+                      <button onClick={closeSuggestionsModal} className="p-2 hover:bg-gray-100 rounded-full">
+                          <X className="w-5 h-5 text-gray-500" />
+                      </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                      {loadingSuggestions ? (
+                          <div className="flex flex-col items-center justify-center py-12 text-gray-500 space-y-3">
+                              <RefreshCw className="w-8 h-8 animate-spin text-yellow-500" />
+                              <p>正在加载建议清单...</p>
+                          </div>
+                      ) : suggestions.length === 0 ? (
+                          <div className="text-center py-8 text-gray-400">暂无建议</div>
+                      ) : (
+                          suggestions.map((item) => (
+                              <div key={item.id} className="border border-gray-100 rounded-lg p-3 bg-gray-50/50">
+                                  <div className="flex justify-between items-start gap-3 mb-1">
+                                      <h4 className="font-bold text-gray-800">{item.title}</h4>
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getSuggestionCategoryClass(item.category)}`}>
+                                          {item.category}
+                                      </span>
+                                  </div>
+                                  <p className="text-xs text-gray-600 mb-2">
+                                      {item.details || item.source_text || "暂无说明"}
+                                  </p>
+                                  <div className="flex flex-wrap gap-2 text-[10px] text-gray-400">
+                                      <span>Count: {item.count}</span>
+                                      <span>Status: {item.status}</span>
+                                      <span>更新: {formatDate(item.updated_at)}</span>
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+
+                  {suggestionMessage && (
+                      <div className={`text-xs p-2 rounded ${suggestionMessage.includes('失败') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                          {suggestionMessage}
+                      </div>
+                  )}
+
+                  <div className="pt-2 border-t flex flex-col gap-2">
+                      <label className="text-xs text-gray-500 font-medium">新增建议 (语音/文字)</label>
+                      <div className="flex gap-2">
+                          <div className="flex-1 relative">
+                              <textarea
+                                  value={suggestionInput}
+                                  onChange={(e) => setSuggestionInput(e.target.value)}
+                                  placeholder="例如：语音识别经常漏词，希望提升准确率..."
+                                  className="w-full p-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent resize-none h-12"
+                                  disabled={isUpdatingSuggestions || isRecording}
+                              />
+                          </div>
+
+                          <button
+                              onClick={() => isRecording ? stopRecording() : startRecording()}
+                              className={`p-3 rounded-full flex-none transition-colors ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                              title={isRecording ? "停止录音" : "语音输入"}
+                          >
+                              {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+                          </button>
+
+                          <button
+                              onClick={() => handleManualUpdateSuggestions()}
+                              disabled={isUpdatingSuggestions || !suggestionInput.trim()}
+                              className="p-3 bg-yellow-500 text-white rounded-full flex-none hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              title="发送建议"
+                          >
+                              {isUpdatingSuggestions ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Habits Modal */}

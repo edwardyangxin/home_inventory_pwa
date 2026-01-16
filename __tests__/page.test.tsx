@@ -27,6 +27,21 @@ const MOCK_HABITS = [
   { name: '早起', type: '生活', details: '6点起床', frequency: '每天', comment: '' }
 ]
 
+const MOCK_SUGGESTIONS = [
+  {
+    id: 's1',
+    title: '语音识别结果不稳定',
+    category: 'bug',
+    details: '连续输入时偶发丢字，导致库存数量不准确。',
+    status: 'open',
+    count: 2,
+    source_text: '刚刚说了两遍，还是识别不准，数量都错了。',
+    merged_from: '["识别不准"]',
+    created_at: '2024-06-01T12:34:56.000Z',
+    updated_at: '2024-06-02T09:10:11.000Z',
+  },
+]
+
 describe('Home Page Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -467,5 +482,25 @@ describe('Home Page Integration Tests', () => {
         expect(screen.queryByText('晚起')).not.toBeNull();
         expect(screen.queryByText('10点起床')).not.toBeNull();
     });
+  })
+
+  it('Flow 10: View Suggestions', async () => {
+    const fetchMock = getFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
+      .mockResolvedValueOnce(jsonResponse(MOCK_SUGGESTIONS))
+
+    render(<Home />)
+    await screen.findByText('现有库存')
+
+    const suggestionsBtn = screen.getByTitle('Suggestions')
+    await act(async () => {
+      fireEvent.click(suggestionsBtn)
+    })
+
+    expect(await screen.findByText('Suggestions 清单')).not.toBeNull()
+    expect(await screen.findByText('语音识别结果不稳定')).not.toBeNull()
+    expect(await screen.findByText('Count: 2')).not.toBeNull()
   })
 })
