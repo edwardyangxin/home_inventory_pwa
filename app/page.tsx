@@ -246,6 +246,7 @@ export default function Home() {
   const [suggestionInput, setSuggestionInput] = useState("");
   const [isUpdatingSuggestions, setIsUpdatingSuggestions] = useState(false);
   const [suggestionMessage, setSuggestionMessage] = useState<string | null>(null);
+  const [deletingSuggestionId, setDeletingSuggestionId] = useState<string | null>(null);
 
   const [recordingMode, setRecordingMode] = useState<'main' | 'habit' | 'suggestion'>('main');
   const [language, setLanguage] = useState<string>('zh-CN');
@@ -472,6 +473,29 @@ export default function Home() {
           console.error("Failed to fetch suggestions", e);
       } finally {
           setLoadingSuggestions(false);
+      }
+  };
+
+  const deleteSuggestion = async (id: string, title: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!confirm(`确定要删除建议 "${title}" 吗?`)) return;
+
+      setDeletingSuggestionId(id);
+      try {
+          const res = await fetch("https://home-inventory-service-392917037016.us-central1.run.app/deleteSuggestion", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id }),
+          });
+
+          if (!res.ok) throw new Error("Delete suggestion failed");
+          setSuggestions(prev => prev.filter(item => item.id !== id));
+          setSuggestionMessage(`已删除 "${title}"`);
+      } catch (e) {
+          console.error("Failed to delete suggestion", e);
+          setSuggestionMessage("删除失败");
+      } finally {
+          setDeletingSuggestionId(null);
       }
   };
 
@@ -1696,10 +1720,24 @@ export default function Home() {
                                   <p className="text-xs text-gray-600 mb-2">
                                       {item.details || item.source_text || "暂无说明"}
                                   </p>
-                                  <div className="flex flex-wrap gap-2 text-[10px] text-gray-400">
-                                      <span>Count: {item.count}</span>
-                                      <span>Status: {item.status}</span>
-                                      <span>更新: {formatDate(item.updated_at)}</span>
+                                  <div className="flex justify-between items-center text-[10px] text-gray-400">
+                                      <div className="flex flex-wrap gap-2">
+                                          <span>Count: {item.count}</span>
+                                          <span>Status: {item.status}</span>
+                                          <span>更新: {formatDate(item.updated_at)}</span>
+                                      </div>
+                                      <button
+                                          onClick={(e) => deleteSuggestion(item.id, item.title, e)}
+                                          disabled={deletingSuggestionId === item.id}
+                                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                                          title="删除建议"
+                                      >
+                                          {deletingSuggestionId === item.id ? (
+                                              <div className="w-3.5 h-3.5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                          ) : (
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                          )}
+                                      </button>
                                   </div>
                               </div>
                           ))

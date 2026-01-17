@@ -504,7 +504,40 @@ describe('Home Page Integration Tests', () => {
     expect(await screen.findByText('Count: 2')).not.toBeNull()
   })
 
-  it('Flow 11: Receipt Upload Auto Update', async () => {
+  it('Flow 11: Delete Suggestion', async () => {
+    const fetchMock = getFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
+      .mockResolvedValueOnce(jsonResponse(MOCK_SUGGESTIONS))
+
+    vi.spyOn(window, 'confirm').mockImplementation(() => true)
+
+    render(<Home />)
+    await screen.findByText('现有库存')
+
+    const suggestionsBtn = screen.getByTitle('Suggestions')
+    await act(async () => {
+      fireEvent.click(suggestionsBtn)
+    })
+
+    expect(await screen.findByText('语音识别结果不稳定')).not.toBeNull()
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: true, message: '已删除建议', deleted_id: 's1' })
+    )
+
+    const deleteBtn = screen.getByTitle('删除建议')
+    await act(async () => {
+      fireEvent.click(deleteBtn)
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('语音识别结果不稳定')).toBeNull()
+    })
+  })
+
+  it('Flow 12: Receipt Upload Auto Update', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const fetchMock = getFetchMock()
     fetchMock
@@ -562,7 +595,7 @@ describe('Home Page Integration Tests', () => {
     }
   })
 
-  it('Flow 12: Main Input Suggestion Updates List', async () => {
+  it('Flow 13: Main Input Suggestion Updates List', async () => {
     const fetchMock = getFetchMock()
     fetchMock
       .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
