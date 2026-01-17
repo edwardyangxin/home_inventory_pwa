@@ -616,6 +616,31 @@ image=<receipt-image-file>
 }
 ```
 
+---
+
+## 15. 🗑️ 删除建议 (Delete Suggestion)
+根据建议 ID 删除 suggestions sheet 中的记录。
+
+- **Endpoint:** `/deleteSuggestion`
+- **Method:** `POST`
+- **Content-Type:** `application/json`
+
+### Request Body
+```json
+{
+  "id": "f7b6a2b1-2f7b-4b3c-9c2c-5d640b8f7a77"
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "message": "已删除建议: 语音识别结果不稳定",
+  "deleted_id": "f7b6a2b1-2f7b-4b3c-9c2c-5d640b8f7a77"
+}
+```
+
 ## 🔗 推荐的前端交互流程
 
 1. **录入场景：**
