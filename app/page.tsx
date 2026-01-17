@@ -190,6 +190,7 @@ export default function Home() {
   const [transcript, setTranscript] = useState("");
   const [status, setStatus] = useState("准备就绪");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState<boolean | null>(null);
   
   const [apiResponse, setApiResponse] = useState<ProcessVoiceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -295,10 +296,12 @@ export default function Home() {
         speechRecognitionProvider.SpeechRecognition || speechRecognitionProvider.webkitSpeechRecognition;
 
       if (!SpeechRecognitionCtor) {
+        setSpeechSupported(false);
         setError("当前浏览器不支持 Web Speech API");
         return;
       }
 
+      setSpeechSupported(true);
       const recognition = new SpeechRecognitionCtor();
       recognition.lang = language;
       recognition.continuous = true;
@@ -1144,6 +1147,13 @@ export default function Home() {
         }`}>
             {status}
         </div>
+        {speechSupported !== null && (
+            <div className={`text-center text-[10px] font-medium ${
+                speechSupported ? "text-green-600" : "text-red-500"
+            }`}>
+                语音识别: {speechSupported ? "支持" : "不支持"}
+            </div>
+        )}
 
         {/* Input Area (Voice + Manual) */}
         <div className="flex-none border border-gray-200 rounded-xl p-3 bg-white min-h-[120px] shadow-sm flex flex-col gap-2 relative focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-shadow">
