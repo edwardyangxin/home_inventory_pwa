@@ -538,6 +538,8 @@ export default function Home() {
           if (data.success) {
               if (Array.isArray(data.suggestions)) {
                   setSuggestions(data.suggestions);
+              } else {
+                  await fetchSuggestions();
               }
               setSuggestionMessage(data.message || "建议已更新");
               setStatus("建议已更新");
@@ -804,7 +806,9 @@ export default function Home() {
               const isRetrieval = data.data.retrieval;
               const items = data.data.items;
 
-              if (isRetrieval) {
+              if (target === 'SUGGESTION') {
+                  await submitSuggestionText(text);
+              } else if (isRetrieval) {
                   if (target === 'HABIT') {
                       searchHabits(items);
                   } else {

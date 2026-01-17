@@ -561,4 +561,78 @@ describe('Home Page Integration Tests', () => {
       vi.useRealTimers()
     }
   })
+
+  it('Flow 12: Main Input Suggestion Updates List', async () => {
+    const fetchMock = getFetchMock()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(MOCK_INVENTORY))
+      .mockResolvedValueOnce(jsonResponse(MOCK_HABITS))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          data: {
+            target: 'SUGGESTION',
+            retrieval: false,
+            items: [],
+          },
+          message: '识别为建议',
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          message: 'Suggestions updated successfully',
+          suggestions: [
+            {
+              id: 's2',
+              title: '离线模式体验',
+              category: 'improvement',
+              details: '希望在无网时也能记录',
+              status: 'open',
+              count: 1,
+              source_text: '希望离线也能记录',
+              merged_from: '[]',
+              created_at: '2024-06-10T12:00:00.000Z',
+              updated_at: '2024-06-10T12:00:00.000Z',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse([
+          {
+            id: 's2',
+            title: '离线模式体验',
+            category: 'improvement',
+            details: '希望在无网时也能记录',
+            status: 'open',
+            count: 1,
+            source_text: '希望离线也能记录',
+            merged_from: '[]',
+            created_at: '2024-06-10T12:00:00.000Z',
+            updated_at: '2024-06-10T12:00:00.000Z',
+          },
+        ])
+      )
+
+    render(<Home />)
+    await screen.findByText('现有库存')
+
+    const transcriptInput = screen.getByPlaceholderText('点击麦克风说话，或直接在此输入...')
+    fireEvent.change(transcriptInput, { target: { value: '希望离线也能记录' } })
+
+    const sendBtn = screen.getByTitle('发送')
+    await act(async () => {
+      fireEvent.click(sendBtn)
+    })
+
+    expect(await screen.findByText('建议已更新')).not.toBeNull()
+
+    const suggestionsBtn = screen.getByTitle('Suggestions')
+    await act(async () => {
+      fireEvent.click(suggestionsBtn)
+    })
+
+    expect(await screen.findByText('离线模式体验')).not.toBeNull()
+  })
 })
