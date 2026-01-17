@@ -263,10 +263,7 @@ export default function Home() {
   }, [recordingMode]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const browserLang = navigator.language;
-      setLanguage(browserLang.startsWith('zh') ? 'zh-CN' : 'en-US');
-    }
+    setLanguage('zh-CN');
   }, []);
 
   useEffect(() => {
