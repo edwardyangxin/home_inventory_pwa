@@ -114,6 +114,9 @@ interface IngestReceiptResponse extends UpdateInventoryResponse {
 interface MealPlanResponse {
   success: boolean;
   suggestions: {
+    day: string;
+    date: string;
+    meal: string;
     title: string;
     rationale: string;
     description: string;
@@ -1070,6 +1073,9 @@ export default function Home() {
     return formatDate(dateString);
   };
 
+  const mealOrder = ["早餐", "午餐", "晚餐"];
+  const dayOrder = ["今天", "明天", "后天"];
+
   const suggestionCategoryStyles: Record<string, string> = {
     bug: "bg-red-100 text-red-700",
     feature: "bg-blue-100 text-blue-700",
@@ -1910,17 +1916,41 @@ export default function Home() {
                             </div>
                             
                             <div className="space-y-3">
-                                {mealPlan.suggestions.map((plan, idx) => (
-                                    <div key={idx} className="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
-                                        <h4 className="font-bold text-gray-900 mb-1">{plan.title}</h4>
-                                        <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 inline-block px-2 py-0.5 rounded">
-                                            💡 {plan.rationale}
-                                        </p>
-                                        <p className="text-sm text-gray-600 leading-relaxed">
-                                            {plan.description}
-                                        </p>
-                                    </div>
-                                ))}
+                                {dayOrder.map((day) => {
+                                    const dayPlans = mealPlan.suggestions
+                                        .filter((plan) => plan.day === day)
+                                        .sort((a, b) => mealOrder.indexOf(a.meal) - mealOrder.indexOf(b.meal));
+
+                                    if (dayPlans.length === 0) return null;
+
+                                    const dateLabel = dayPlans[0]?.date ? ` · ${dayPlans[0].date}` : "";
+
+                                    return (
+                                        <div key={day} className="space-y-2">
+                                            <div className="text-xs font-semibold text-orange-700 bg-orange-50 px-2 py-1 rounded inline-block">
+                                                {day}{dateLabel}
+                                            </div>
+                                            <div className="space-y-3">
+                                                {dayPlans.map((plan, idx) => (
+                                                    <div key={`${plan.meal}-${idx}`} className="border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow">
+                                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                                            <h4 className="font-bold text-gray-900">{plan.title}</h4>
+                                                            <span className="text-[10px] text-orange-700 bg-orange-50 px-2 py-0.5 rounded">
+                                                                {plan.meal}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-orange-600 mb-2 font-medium bg-orange-50 inline-block px-2 py-0.5 rounded">
+                                                            💡 {plan.rationale}
+                                                        </p>
+                                                        <p className="text-sm text-gray-600 leading-relaxed">
+                                                            {plan.description}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </>
                     ) : (

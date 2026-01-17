@@ -310,7 +310,16 @@ describe('Home Page Integration Tests', () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         success: true,
-        suggestions: [{ title: '测试食谱', rationale: '消耗库存', description: '好吃' }],
+        suggestions: [
+          {
+            day: '今天',
+            date: '2026-01-17',
+            meal: '早餐',
+            title: '测试食谱',
+            rationale: '消耗库存',
+            description: '好吃',
+          },
+        ],
         summary: '为您推荐',
       })
     )
