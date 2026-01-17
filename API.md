@@ -396,7 +396,7 @@ image=<receipt-image-file>
 ---
 
 ## 9. 🍽️ 膳食推荐计划 (Recommend Meal Plan)
-根据库存中即将过期的食材，生成未来 3 天的具体饮食建议，优先考虑 Habits 中的家庭内部菜谱（`type: "菜谱"`）。
+根据库存中即将过期的食材，生成未来 3 天（今天/明天/后天）的具体饮食建议，优先考虑 Habits 中的家庭内部菜谱（`type: "菜谱"`），顺序固定为今天 -> 明天 -> 后天，每天包含早餐/午餐/晚餐。
 
 - **Endpoint:** `/recommendMealPlan`
 - **Method:** `GET`
@@ -407,14 +407,28 @@ image=<receipt-image-file>
   "success": true,
   "suggestions": [
     {
-      "title": "周一晚餐 - 萝卜豆腐排骨汤",
+      "day": "今天",
+      "date": "2026-01-17",
+      "meal": "早餐",
+      "title": "今天早餐 - 萝卜豆腐排骨汤",
       "rationale": "优先消耗了快过期的 [萝卜] 和 [豆腐]。",
       "description": "将萝卜、豆腐切块，与排骨一同炖煮..."
     },
     {
-      "title": "周二早餐 - 香蕉牛奶",
+      "day": "明天",
+      "date": "2026-01-18",
+      "meal": "午餐",
+      "title": "明天午餐 - 香蕉牛奶",
       "rationale": "消耗了 [香蕉] 和 [牛奶]。",
       "description": "简单的营养早餐搭配。"
+    },
+    {
+      "day": "后天",
+      "date": "2026-01-19",
+      "meal": "晚餐",
+      "title": "后天晚餐 - 清炒西兰花",
+      "rationale": "优先消耗了快过期的 [西兰花]。",
+      "description": "西兰花焯水后清炒，蒜末提香。"
     }
   ],
   "summary": "这份计划帮您解决了冰箱里积压的蔬菜和水果。"
