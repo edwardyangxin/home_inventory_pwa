@@ -65,6 +65,10 @@ interface InventoryItem {
   status: string;
 }
 
+type EditableInventoryItem = Omit<InventoryItem, "quantity"> & {
+  quantity: number | "";
+};
+
 interface ProcessVoiceResponse {
   success: boolean;
   data: {
@@ -219,7 +223,7 @@ export default function Home() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Edit Modal State
-  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [editingItem, setEditingItem] = useState<EditableInventoryItem | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Meal Plan State
@@ -742,23 +746,24 @@ export default function Home() {
   };
 
   const openEditModal = (item: InventoryItem) => {
-      setEditingItem({ ...item }); 
+      setEditingItem({ ...item });
   };
 
   const handleEditChange = (field: keyof InventoryItem, value: string) => {
       if (!editingItem) return;
-      const nextValue = field === "quantity" ? Number(value) : value;
+      const nextValue = field === "quantity" ? (value === "" ? "" : Number(value)) : value;
       setEditingItem({ ...editingItem, [field]: nextValue });
   };
 
   const saveEdit = async () => {
       if (!editingItem) return;
+      const quantityValue = editingItem.quantity === "" ? 0 : Number(editingItem.quantity);
       setIsSavingEdit(true);
       try {
           const payload = {
             id: editingItem.id,
             name: editingItem.name,
-            quantity: Number(editingItem.quantity),
+            quantity: quantityValue,
             unit: editingItem.unit,
             category: editingItem.category,
             location: editingItem.location,
